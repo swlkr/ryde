@@ -1,4 +1,4 @@
-use ryze::*;
+use ryde::*;
 
 #[main]
 async fn main() {

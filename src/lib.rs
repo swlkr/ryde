@@ -1,4 +1,4 @@
-extern crate self as ryze;
+extern crate self as ryde;
 use axum::Router;
 pub use enum_router::{router, Routes};
 pub use tokio::main;
@@ -25,7 +25,7 @@ macro_rules! serve {
 
 #[cfg(test)]
 mod tests {
-    use ryze::*;
+    use ryde::*;
 
     fn it_works() {}
 }

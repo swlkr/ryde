@@ -1,18 +1,26 @@
 extern crate self as ryze;
 use axum::Router;
-use std::sync::OnceLock;
+pub use enum_router::{router, Routes};
 pub use tokio::main;
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
-static ROUTER: OnceLock<Router> = OnceLock::new();
-
-pub async fn serve(ip: &str) -> Result<()> {
+pub async fn server(ip: &str, router: Router) -> Result<()> {
     let listener = tokio::net::TcpListener::bind(ip).await?;
     println!("Listening on {}", ip);
-    let router = ROUTER.get_or_init(|| Router::new());
-    axum::serve(listener, router.clone()).await?;
+    axum::serve(listener, router).await?;
     Ok(())
+}
+
+#[macro_export]
+macro_rules! serve {
+    ($ip:expr) => {
+        server($ip, axum::Router::new())
+    };
+
+    ($ip:expr, $ident:ident) => {
+        server($ip, $ident::router())
+    };
 }
 
 #[cfg(test)]

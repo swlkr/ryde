@@ -8,4 +8,4 @@ axum = { version = "0.7.4", features = ["macros"] }
 tokio = { version = "1.36.0", features = ["rt-multi-thread", "macros"] }
 
 [[example]]
-name = "todos"
+name = "simple"

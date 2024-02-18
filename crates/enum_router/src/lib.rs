@@ -1,4 +1,4 @@
-pub use enum_router_macro::{router, Routes};
+pub use enum_router_macros::{router, Routes};
 extern crate self as enum_router;
 
 #[cfg(test)]

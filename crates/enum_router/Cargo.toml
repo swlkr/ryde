@@ -3,11 +3,8 @@ name = "enum_router"
 version = "0.1.0"
 edition = "2021"
 
-[workspace]
-members = [ "enum_router_macro" ]
-
 [dependencies]
-enum_router_macro = { path = "enum_router_macro", version = "0.1.0" }
+enum_router_macros = { path = "../enum_router_macros", version = "0.1.0" }
 axum-core = { version = "0.3" }
 
 [dev-dependencies]

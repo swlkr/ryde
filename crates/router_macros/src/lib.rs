@@ -35,7 +35,7 @@ fn router_macro(args: Args, item_enum: ItemEnum) -> Result<TokenStream2> {
     };
 
     let expanded = quote! {
-        #[derive(enum_router::Routes)]
+        #[derive(router::Routes)]
         #[state(#attr)]
         #item_enum
     };

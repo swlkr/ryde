@@ -194,28 +194,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
-name = "enum_router"
-version = "0.1.0"
-dependencies = [
- "axum 0.6.20",
- "axum-core 0.3.4",
- "enum_router_macros",
- "serde",
- "tokio",
- "tower",
-]
-
-[[package]]
-name = "enum_router_macros"
-version = "0.1.0"
-dependencies = [
- "proc-macro-error",
- "proc-macro2",
- "quote",
- "syn 1.0.109",
-]
-
-[[package]]
 name = "equivalent"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -625,6 +603,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "router"
+version = "0.1.0"
+dependencies = [
+ "axum 0.6.20",
+ "axum-core 0.3.4",
+ "router_macros",
+ "serde",
+ "tokio",
+ "tower",
+]
+
+[[package]]
+name = "router_macros"
+version = "0.1.0"
+dependencies = [
+ "proc-macro-error",
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
+]
+
+[[package]]
 name = "rustc-demangle"
 version = "0.1.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -641,8 +641,8 @@ name = "ryde"
 version = "0.1.0"
 dependencies = [
  "axum 0.7.4",
- "enum_router",
  "hyped",
+ "router",
  "tokio",
 ]
 

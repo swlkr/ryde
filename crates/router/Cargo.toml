@@ -1,10 +1,10 @@
 [package]
-name = "enum_router"
+name = "router"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-enum_router_macros = { path = "../enum_router_macros", version = "0.1.0" }
+router_macros = { path = "../router_macros", version = "0.1.0" }
 axum-core = { version = "0.3" }
 
 [dev-dependencies]

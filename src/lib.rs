@@ -1,6 +1,6 @@
 extern crate self as ryde;
 use axum::Router;
-pub use enum_router::{router, Routes};
+pub use router::{router, Routes};
 pub use tokio::main;
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;

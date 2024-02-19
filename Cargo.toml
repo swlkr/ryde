@@ -4,13 +4,13 @@ version = "0.1.0"
 edition = "2021"
 
 [workspace]
-members = ["crates/enum_router", "crates/enum_router_macros"]
+members = ["crates/router", "crates/router_macros"]
 
 [dependencies]
 axum = { version = "0.7.4", features = ["macros"] }
 tokio = { version = "1.36.0", features = ["rt-multi-thread", "macros"] }
 hyped = { version = "0.1.1" }
-enum_router = { path = "crates/enum_router", version = "0.1.0" }
+router = { path = "crates/router", version = "0.1.0" }
 
 [[example]]
 name = "simple"

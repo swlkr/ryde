@@ -1,13 +1,13 @@
 [package]
-name = "enum_router_macros"
+name = "router_macros"
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
 readme = "README.md"
-homepage = "https://github.com/swlkr/enum_router"
-repository = "https://github.com/swlkr/enum_router"
-keywords = ["enum_router_macros"]
-description = "Macros for the enum_router crate"
+homepage = "https://github.com/swlkr/ryde"
+repository = "https://github.com/swlkr/ryde"
+keywords = ["router_macros"]
+description = "Macros for the router crate in ryde"
 
 [lib]
 proc-macro = true

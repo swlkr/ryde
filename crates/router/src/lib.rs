@@ -1,5 +1,5 @@
-pub use enum_router_macros::{router, Routes};
-extern crate self as enum_router;
+pub use router_macros::{router, Routes};
+extern crate self as router;
 
 #[cfg(test)]
 mod tests {
@@ -9,7 +9,7 @@ mod tests {
     use axum::http::{Request, StatusCode};
     use axum::response::IntoResponse;
     use axum::Router;
-    use enum_router::router;
+    use router::router;
     use serde::Deserialize;
     use tower::ServiceExt;
 

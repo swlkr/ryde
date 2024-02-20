@@ -17,6 +17,7 @@ tokio = { version = "1.36.0", features = ["rt-multi-thread", "macros"] }
 hyped = { version = "0.1.1" }
 router = { path = "crates/router", version = "0.1.0" }
 static_files = { path = "crates/static_files", version = "0.2.0" }
+serde = { version = "1.0.197", features = ["derive"] }
 
 [[example]]
 name = "simple"

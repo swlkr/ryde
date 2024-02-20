@@ -1,6 +1,8 @@
 extern crate self as ryde;
-use axum::Router;
+pub use axum::extract::*;
+pub use axum::*;
 pub use router::{router, Routes};
+pub use serde::*;
 pub use static_files::{self, StaticFiles};
 pub use tokio::main;
 
@@ -15,10 +17,6 @@ pub async fn server(ip: &str, router: Router) -> Result<()> {
 
 #[macro_export]
 macro_rules! serve {
-    ($ip:expr) => {
-        server($ip, axum::Router::new())
-    };
-
     ($ip:expr, $ident:ident) => {
         server($ip, $ident::router())
     };

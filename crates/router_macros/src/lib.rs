@@ -43,7 +43,10 @@ fn router_macro(args: Args, item_enum: ItemEnum) -> Result<TokenStream2> {
     Ok(expanded)
 }
 
-#[proc_macro_derive(Routes, attributes(get, post, delete, patch, put, state))]
+#[proc_macro_derive(
+    Routes,
+    attributes(get, post, delete, patch, put, state, embed, folder)
+)]
 pub fn routes(s: TokenStream) -> TokenStream {
     let input = parse_macro_input!(s as DeriveInput);
     match routes_macro(input) {
@@ -75,7 +78,7 @@ fn routes_macro(input: DeriveInput) -> Result<TokenStream2> {
 
     let variants = data
         .variants
-        .into_iter()
+        .iter()
         .map(|variant| RouteVariant::from(variant))
         .collect::<Vec<_>>();
 
@@ -129,6 +132,64 @@ fn routes_macro(input: DeriveInput) -> Result<TokenStream2> {
         )
         .collect::<Vec<_>>();
 
+    let embed_attr = data
+        .variants
+        .iter()
+        .filter(|variant| {
+            variant
+                .attrs
+                .iter()
+                .find(|attr| attr.path.is_ident("embed"))
+                .is_some()
+        })
+        .last();
+    let embed_ident = match embed_attr {
+        Some(variant) => Some(&variant.ident),
+        None => None,
+    };
+    let folder_attr = data
+        .variants
+        .iter()
+        .filter_map(|variant| {
+            variant
+                .attrs
+                .iter()
+                .find(|attr| attr.path.is_ident("folder"))
+        })
+        .last();
+    let folder = match folder_attr {
+        Some(attr) => match attr.parse_args::<LitStr>() {
+            Ok(lit_str) => lit_str.value(),
+            Err(_) => "static".into(),
+        },
+        None => "static".into(),
+    };
+    let static_file_handler = if let Some(ident) = embed_ident {
+        let fn_name = Ident::new(&pascal_to_camel(&ident.to_string()), ident.span());
+        quote! {
+            async fn #fn_name(uri: axum::http::Uri) -> impl axum::response::IntoResponse {
+                match #ident::get(uri.path()) {
+                    Some((content_type, bytes)) => (
+                        axum::http::StatusCode::OK,
+                        [(axum::http::header::CONTENT_TYPE, content_type)],
+                        bytes,
+                    ),
+                    None => (
+                        axum::http::StatusCode::NOT_FOUND,
+                        [(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")],
+                        "not found".as_bytes(),
+                    ),
+                }
+            }
+
+            #[derive(static_files::StaticFiles)]
+            #[folder(#folder)]
+            struct #ident;
+        }
+    } else {
+        quote! {}
+    };
+
     Ok(quote! {
         impl #enum_name {
             fn url(&self) -> String {
@@ -155,6 +216,8 @@ fn routes_macro(input: DeriveInput) -> Result<TokenStream2> {
                 f.write_fmt(format_args!("{}", self.url()))
             }
         }
+
+        #static_file_handler
     })
 }
 
@@ -255,28 +318,43 @@ fn pascal_to_camel(input: &str) -> String {
 }
 
 #[derive(Clone)]
-struct RouteVariant {
+struct RouteVariant<'a> {
     method: Ident,
     path: LitStr,
-    variant: Ident,
-    fields: Fields,
+    variant: &'a Ident,
+    fields: &'a Fields,
 }
 
-impl From<Variant> for RouteVariant {
-    fn from(value: Variant) -> Self {
-        let variant = value.ident;
+impl<'a> From<&'a Variant> for RouteVariant<'a> {
+    fn from(value: &'a Variant) -> Self {
+        let variant = &value.ident;
         let (method, path) = value
             .attrs
-            .into_iter()
+            .iter()
             .filter_map(
                 |attr| match (attr.path.get_ident(), attr.parse_args::<LitStr>().ok()) {
-                    (Some(ident), Some(path)) => Some((ident.clone(), path)),
+                    (Some(ident), Some(path)) => {
+                        if ident.to_string() != "folder" {
+                            Some((ident.clone(), path))
+                        } else {
+                            None
+                        }
+                    }
+                    (Some(ident), None) => {
+                        // HACK: assume this is #[embed]
+                        Some((
+                            Ident::new("get", ident.span()),
+                            LitStr::new("/*file", ident.span()),
+                        ))
+                    }
                     _ => None,
                 },
             )
             .last()
-            .expect("should be #[get], #[post], #[put], #[delete] or #[state]");
-        let fields = value.fields;
+            .expect(
+                "should be #[get], #[post], #[put], #[delete], #[state], #[embed] or #[folder]",
+            );
+        let fields = &value.fields;
 
         RouteVariant {
             path,

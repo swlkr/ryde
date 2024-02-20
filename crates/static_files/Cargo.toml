@@ -1,0 +1,7 @@
+[package]
+name = "static_files"
+version = "0.2.0"
+edition = "2021"
+
+[dependencies]
+static_files_macros = { path = "../static_files_macros", version = "0.2.0" }

@@ -1,6 +1,7 @@
 extern crate self as ryde;
 use axum::Router;
 pub use router::{router, Routes};
+pub use static_files::{self, StaticFiles};
 pub use tokio::main;
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;

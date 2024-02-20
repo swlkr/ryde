@@ -4,13 +4,19 @@ version = "0.1.0"
 edition = "2021"
 
 [workspace]
-members = ["crates/router", "crates/router_macros"]
+members = [
+  "crates/router",
+  "crates/router_macros",
+  "crates/static_files",
+  "crates/static_files_macros",
+]
 
 [dependencies]
 axum = { version = "0.7.4", features = ["macros"] }
 tokio = { version = "1.36.0", features = ["rt-multi-thread", "macros"] }
 hyped = { version = "0.1.1" }
 router = { path = "crates/router", version = "0.1.0" }
+static_files = { path = "crates/static_files", version = "0.2.0" }
 
 [[example]]
 name = "simple"
@@ -20,3 +26,6 @@ name = "html"
 
 [[example]]
 name = "router"
+
+[[example]]
+name = "static_files"

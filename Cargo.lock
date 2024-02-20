@@ -621,6 +621,7 @@ dependencies = [
  "proc-macro-error",
  "proc-macro2",
  "quote",
+ "static_files",
  "syn 1.0.109",
 ]
 
@@ -643,6 +644,7 @@ dependencies = [
  "axum 0.7.4",
  "hyped",
  "router",
+ "static_files",
  "tokio",
 ]
 
@@ -728,6 +730,23 @@ checksum = "7b5fac59a5cb5dd637972e5fca70daf0523c9067fcdc4842f053dae04a18f8e9"
 dependencies = [
  "libc",
  "windows-sys",
+]
+
+[[package]]
+name = "static_files"
+version = "0.2.0"
+dependencies = [
+ "static_files_macros",
+]
+
+[[package]]
+name = "static_files_macros"
+version = "0.2.0"
+dependencies = [
+ "proc-macro-error",
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
 ]
 
 [[package]]

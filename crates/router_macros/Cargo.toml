@@ -17,3 +17,4 @@ proc-macro2 = "1"
 quote = "1"
 syn = { version = "1", features = ["full"] }
 proc-macro-error = "1"
+static_files = { path = "../static_files" }

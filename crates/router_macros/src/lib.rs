@@ -218,6 +218,14 @@ fn routes_macro(input: DeriveInput) -> Result<TokenStream2> {
         }
 
         #static_file_handler
+
+        use std::io::Write;
+
+        impl html::Render for #enum_name {
+            fn render(&self, buffer: &mut Vec<u8>) -> std::io::Result<()> {
+                buffer.write_fmt(format_args!("{}", self.to_string()))
+            }
+        }
     })
 }
 

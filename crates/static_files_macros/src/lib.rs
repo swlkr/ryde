@@ -56,12 +56,12 @@ fn static_files_macro(input: DeriveInput) -> Result<TokenStream2> {
         let f1 = path.clone();
         let ident_name = path.clone().with_extension("").file_name().unwrap().to_string_lossy().to_uppercase();
         let hash_ident = Ident::new(&format!("{}_HASH", &ident_name), Span::call_site());
-        let filename = f1.into_os_string().into_string().unwrap();
+        let filename = f1.file_name().unwrap().to_string_lossy();
         if let Some(ext) = path.extension() {
             if let Some(ext) = ext.to_str() {
                 match ext {
-                    "js" => quote! { format!("<script src=\"{}?v={}\" defer></script>", #filename, Self::#hash_ident) },
-                    "css" => quote! { format!("<link rel=stylesheet href=\"{}?v={}\" />", #filename, Self::#hash_ident) },
+                    "js" => quote! { format!("<script src=\"/{}?v={}\" defer></script>", #filename, Self::#hash_ident) },
+                    "css" => quote! { format!("<link rel=stylesheet href=\"/{}?v={}\" />", #filename, Self::#hash_ident) },
                     _ => quote! {}
                 }
             } else {
@@ -110,9 +110,9 @@ fn static_files_macro(input: DeriveInput) -> Result<TokenStream2> {
                 }
             }
 
-            pub fn render() -> String {
+            pub fn render() -> html::Raw {
                 let v: Vec<String> = vec![#(#rendered,)*];
-                v.join("")
+                html::Raw(v.join(""))
             }
 
             pub const fn hash(bytes: &[u8]) -> u64 {

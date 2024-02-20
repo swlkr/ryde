@@ -26,7 +26,7 @@ enum Routes {
 
 ```rust
 fn render() -> String {
-    hyped::render((
+    ryde::render((
         doctype(),
         html((
             head(render!(StaticFiles)),

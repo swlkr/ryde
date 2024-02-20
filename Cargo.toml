@@ -9,12 +9,13 @@ members = [
   "crates/router_macros",
   "crates/static_files",
   "crates/static_files_macros",
+  "crates/html",
 ]
 
 [dependencies]
 axum = { version = "0.7.4", features = ["macros"] }
 tokio = { version = "1.36.0", features = ["rt-multi-thread", "macros"] }
-hyped = { version = "0.1.1" }
+html = { path = "crates/html", version = "0.2.0" }
 router = { path = "crates/router", version = "0.1.0" }
 static_files = { path = "crates/static_files", version = "0.2.0" }
 serde = { version = "1.0.197", features = ["derive"] }

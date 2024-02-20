@@ -1,0 +1,14 @@
+[package]
+name = "html"
+version = "0.2.0"
+edition = "2021"
+license = "MIT"
+readme = "README.md"
+homepage = "https://github.com/swlkr/html"
+repository = "https://github.com/swlkr/html"
+keywords = ["html", "template", "ssr", "web"]
+description = "An ergonomic way to render html using plain old rust"
+
+[dependencies]
+seq-macro = "0.3"
+axum-core = "0.4.3"

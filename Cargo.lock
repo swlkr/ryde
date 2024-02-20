@@ -297,6 +297,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bd5256b483761cd23699d0da46cc6fd2ee3be420bbe6d020ae4a091e70b7e9fd"
 
 [[package]]
+name = "html"
+version = "0.2.0"
+dependencies = [
+ "axum-core 0.4.3",
+ "seq-macro",
+]
+
+[[package]]
 name = "http"
 version = "0.2.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -363,15 +371,6 @@ name = "httpdate"
 version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "df3b46402a9d5adb4c86a0cf463f42e19994e3ee891101b1841f30a545cb49a9"
-
-[[package]]
-name = "hyped"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2c1ae71b59ec8e318246a4d33d466b6162d5c4d2bbf74c81e8a802c293ec8605"
-dependencies = [
- "seq-macro",
-]
 
 [[package]]
 name = "hyper"
@@ -642,7 +641,7 @@ name = "ryde"
 version = "0.1.0"
 dependencies = [
  "axum 0.7.4",
- "hyped",
+ "html",
  "router",
  "serde",
  "static_files",

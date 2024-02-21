@@ -23,38 +23,23 @@ mod tests {
 
     #[test]
     fn rules_works() {
-        let src = stringify!(let class = css!(
+        let css = css!(
             "color: var(--gray-300)",
             "justify-content: center",
             "display: flex"
-        ); let class2 = css!("a: b"));
-        let rules = rules(src);
-        assert_eq!(
-            "color:var(--gray-300),justify-content:center,display:flex,a:b",
-            rules
         );
-    }
-
-    #[test]
-    fn generate_works() {
-        let src = stringify!(let class = css!(
-            "color: var(--gray-300)",
-            "justify-content: center",
-            "display: flex",
-        ););
-        let expected = ".77dwKDE{color:var(--gray-300);}.VtriMut{justify-content:center;}.2tuJoSr{display:flex;}";
-        let generated = generate(src);
-        assert_eq!(expected, generated);
+        assert_eq!("color-gray-300 justify-content-center display-flex", css.0);
+        assert_eq!(".color-gray-300{color:var(--gray-300);}.justify-content-center{justify-content:center;}.display-flex{display:flex;}", css.1);
     }
 
     #[test]
     fn pseudo_variant_works() {
-        let src = stringify!(let class = css!(
+        let css = css!(
             "color: var(--gray-300)",
-            "dark:hover:focus|color: var(--gray-300)",
-        ););
-        let expected = ".77dwKDE{color:var(--gray-300);}@media(prefers-color-scheme:dark){.FrFUmvk:focus:hover{color:var(--gray-300);}}";
-        let generated = generate(src);
-        assert_eq!(expected, generated);
+            "dark:hover:focus:color: var(--gray-300)",
+        );
+        let expected = r".color-gray-300{color:var(--gray-300);}@media(prefers-color-scheme:dark){.dark-hover-focus-color-gray-300:focus:hover{color:var(--gray-300);}}";
+
+        assert_eq!(expected, css.1);
     }
 }

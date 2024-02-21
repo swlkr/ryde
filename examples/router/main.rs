@@ -2,7 +2,7 @@ use ryde::*;
 
 #[main]
 async fn main() {
-    serve!("localhost:3000", Routes).await.unwrap()
+    serve!("localhost:3000", Routes)
 }
 
 async fn index() -> String {

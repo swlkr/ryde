@@ -35,7 +35,7 @@ fn css_macro(input: Punctuated<Expr, Token![,]>) -> Result<TokenStream2> {
         .collect::<Vec<_>>()
         .join(" ");
 
-    Ok(quote! { (#classes, #css) })
+    Ok(quote! { (#classes, vec![#(#css,)*]) })
 }
 
 fn class_name(rule: &str) -> String {
@@ -50,7 +50,7 @@ fn class_name(rule: &str) -> String {
     replace_repeated_strings(&class_name)
 }
 
-fn generate_css(rules: &Vec<(String, String)>) -> String {
+fn generate_css(rules: &Vec<(String, String)>) -> Vec<String> {
     rules
         .iter()
         .map(|(class, rule)| {
@@ -88,7 +88,6 @@ fn generate_css(rules: &Vec<(String, String)>) -> String {
             }
         })
         .collect::<Vec<_>>()
-        .join("")
 }
 
 fn replace_repeated_strings(s: &str) -> String {

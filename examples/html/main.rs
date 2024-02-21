@@ -32,7 +32,7 @@ fn h1(route: Routes) -> Element {
     ryde::h1(format!("You are here {}", route)).css(css)
 }
 
-fn p(s: impl Display) -> Element {
+fn p(s: &'static str) -> Element {
     let css = css!(
         "font-size: 16px",
         "font-family: sans-serif",
@@ -42,7 +42,7 @@ fn p(s: impl Display) -> Element {
         "dark:background: var(--gray-950)"
     );
 
-    ryde::p(s.to_string()).css(css)
+    ryde::p(s).css(css)
 }
 
 fn render(element: Element) -> Html {

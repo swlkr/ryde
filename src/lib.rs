@@ -49,16 +49,13 @@ impl Document {
     }
 
     pub fn head(mut self, children: impl Render + 'static) -> Self {
-        self.head = head(children);
+        self.head = anon_element(children);
         self
     }
 
     pub fn body(mut self, children: impl Render + 'static) -> Self {
         let styles = styles(&children);
-        let inner_head = html::render(self.head)
-            .replacen("<head>", "", 1)
-            .replacen("</head>", "", 1)
-            .into();
+        let inner_head = html::render(self.head).replace("<>", "").into();
         self.head = head((Raw(inner_head), style(Raw(styles))));
         self.body = body(children);
         self

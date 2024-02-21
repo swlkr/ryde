@@ -1,4 +1,4 @@
-use std::{borrow::Cow, fmt::Display, io::Write};
+use std::{borrow::Cow, collections::HashSet, fmt::Display, io::Write};
 
 extern crate self as html;
 
@@ -33,7 +33,7 @@ pub struct Element {
     attrs: Vec<u8>,
     children: Option<Box<dyn Render>>,
     class: String,
-    css: String,
+    css: Vec<String>,
 }
 
 macro_rules! impl_attr {
@@ -65,7 +65,7 @@ impl Element {
             attrs: vec![],
             children,
             class: "".into(),
-            css: "".into(),
+            css: vec![],
         }
     }
 
@@ -114,8 +114,8 @@ impl Element {
         self.attr("for", value)
     }
 
-    pub fn css(mut self, value: (impl Display, impl Display)) -> Self {
-        self.css = value.1.to_string();
+    pub fn css(mut self, value: (impl Display, Vec<&str>)) -> Self {
+        self.css.extend(value.1.into_iter().map(|x| x.to_string()));
         self.class(value.0)
     }
 
@@ -169,7 +169,7 @@ impl Element {
 
 pub trait Render {
     fn render(&self, buffer: &mut Vec<u8>) -> std::io::Result<()>;
-    fn styles(&self, _buffer: &mut Vec<u8>) -> std::io::Result<()> {
+    fn styles(&self, _styles: &mut HashSet<String>) -> std::io::Result<()> {
         Ok(())
     }
 }
@@ -201,13 +201,13 @@ impl Render for Element {
         Ok(())
     }
 
-    fn styles(&self, buffer: &mut Vec<u8>) -> std::io::Result<()> {
+    fn styles(&self, styles: &mut HashSet<String>) -> std::io::Result<()> {
         if !self.css.is_empty() {
-            buffer.write_fmt(format_args!("{}", self.css))?;
+            styles.extend(self.css.clone().into_iter().collect::<HashSet<String>>());
         }
         match &self.children {
             Some(children) => {
-                children.styles(buffer)?;
+                children.styles(styles)?;
             }
             None => {}
         };
@@ -271,7 +271,7 @@ where
         Ok(())
     }
 
-    fn styles(&self, buffer: &mut Vec<u8>) -> std::io::Result<()> {
+    fn styles(&self, buffer: &mut HashSet<String>) -> std::io::Result<()> {
         for t in self {
             t.styles(buffer)?;
         }
@@ -293,7 +293,7 @@ macro_rules! impl_render_tuple {
                     Ok(())
                 }
 
-                fn styles(&self, buffer: &mut Vec<u8>) -> std::io::Result<()> {
+                fn styles(&self, buffer: &mut HashSet<String>) -> std::io::Result<()> {
                     #(self.N.styles(buffer)?;)*
 
                     Ok(())
@@ -318,9 +318,11 @@ pub fn render(renderable: impl Render + 'static) -> String {
 }
 
 pub fn styles(renderable: &impl Render) -> String {
-    let mut v: Vec<u8> = vec![];
-    renderable.styles(&mut v).expect("Failed to style html");
-    String::from_utf8_lossy(&v).into()
+    let mut styles: HashSet<String> = HashSet::new();
+    renderable
+        .styles(&mut styles)
+        .expect("Failed to style html");
+    styles.into_iter().collect::<Vec<_>>().join("")
 }
 
 macro_rules! impl_render_num {
@@ -351,6 +353,10 @@ pub fn element(name: &'static str, children: impl Render + 'static) -> Element {
 
 pub fn self_closing_element(name: &'static str) -> Element {
     Element::new(name, None)
+}
+
+pub fn anon_element(children: impl Render + 'static) -> Element {
+    Element::new("", Some(Box::new(children)))
 }
 
 macro_rules! impl_element {
@@ -562,5 +568,43 @@ mod tests {
             "<turbo-frame id=\"id\"><div>inside turbo frame</div></turbo-frame>",
             html
         );
+    }
+
+    #[test]
+    fn styles_dedup() {
+        let p1 = p("").css((
+            "color-red background-green",
+            vec![
+                ".color-red{color:red;}".into(),
+                ".background-green{background:green;}".into(),
+            ],
+        ));
+        let p2 = p("").css((
+            "color-red background-blue",
+            vec![
+                ".color-red{color:red;}".into(),
+                ".background-blue{background:blue;}".into(),
+            ],
+        ));
+        let div1 = div((p1, p2)).css(("color-red", vec![".color-red{color:red;}".into()]));
+        let styles = styles(&div1);
+        let mut styles = styles
+            .split(".")
+            .into_iter()
+            .filter(|x| !x.is_empty())
+            .map(|x| format!(".{}", x))
+            .collect::<Vec<String>>();
+
+        styles.sort();
+
+        let mut expected: Vec<String> = vec![
+            ".color-red{color:red;}".into(),
+            ".background-blue{background:blue;}".into(),
+            ".background-green{background:green;}".into(),
+        ];
+
+        expected.sort();
+
+        assert_eq!(expected, styles);
     }
 }

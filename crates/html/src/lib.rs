@@ -1,6 +1,5 @@
 use std::{borrow::Cow, fmt::Display, io::Write};
 
-use axum_core::response::IntoResponse;
 extern crate self as html;
 
 fn escape<'a, S: Into<Cow<'a, str>>>(input: S) -> Cow<'a, str> {
@@ -33,6 +32,8 @@ pub struct Element {
     name: &'static str,
     attrs: Vec<u8>,
     children: Option<Box<dyn Render>>,
+    class: String,
+    css: String,
 }
 
 macro_rules! impl_attr {
@@ -63,6 +64,8 @@ impl Element {
             name,
             attrs: vec![],
             children,
+            class: "".into(),
+            css: "".into(),
         }
     }
 
@@ -111,7 +114,21 @@ impl Element {
         self.attr("for", value)
     }
 
-    impl_attr!(class);
+    pub fn css(mut self, value: (impl Display, impl Display)) -> Self {
+        self.css = value.1.to_string();
+        self.class(value.0)
+    }
+
+    pub fn class(mut self, value: impl Display) -> Self {
+        if self.class.is_empty() {
+            self.class = value.to_string();
+        } else {
+            self.class.push(' ');
+            self.class.push_str(&value.to_string());
+        }
+        self
+    }
+
     impl_attr!(id);
     impl_attr!(charset);
     impl_attr!(content);
@@ -152,11 +169,8 @@ impl Element {
 
 pub trait Render {
     fn render(&self, buffer: &mut Vec<u8>) -> std::io::Result<()>;
-}
-
-impl IntoResponse for Element {
-    fn into_response(self) -> axum_core::response::Response {
-        render(self).into_response()
+    fn styles(&self, _buffer: &mut Vec<u8>) -> std::io::Result<()> {
+        Ok(())
     }
 }
 
@@ -169,6 +183,10 @@ impl Render for Element {
             buffer.write(b" ")?;
             buffer.write(&self.attrs)?;
         }
+        if !self.class.is_empty() {
+            buffer.write(b" ")?;
+            buffer.write_fmt(format_args!("class=\"{}\"", self.class))?;
+        }
         buffer.write(b">")?;
         match &self.children {
             Some(children) => {
@@ -180,6 +198,19 @@ impl Render for Element {
             None => {}
         };
 
+        Ok(())
+    }
+
+    fn styles(&self, buffer: &mut Vec<u8>) -> std::io::Result<()> {
+        if !self.css.is_empty() {
+            buffer.write_fmt(format_args!("{}", self.css))?;
+        }
+        match &self.children {
+            Some(children) => {
+                children.styles(buffer)?;
+            }
+            None => {}
+        };
         Ok(())
     }
 }
@@ -239,6 +270,14 @@ where
 
         Ok(())
     }
+
+    fn styles(&self, buffer: &mut Vec<u8>) -> std::io::Result<()> {
+        for t in self {
+            t.styles(buffer)?;
+        }
+
+        Ok(())
+    }
 }
 
 macro_rules! impl_render_tuple {
@@ -250,6 +289,12 @@ macro_rules! impl_render_tuple {
             {
                 fn render(&self, buffer: &mut Vec<u8>) -> std::io::Result<()> {
                     #(self.N.render(buffer)?;)*
+
+                    Ok(())
+                }
+
+                fn styles(&self, buffer: &mut Vec<u8>) -> std::io::Result<()> {
+                    #(self.N.styles(buffer)?;)*
 
                     Ok(())
                 }
@@ -269,6 +314,12 @@ pub fn doctype() -> Element {
 pub fn render(renderable: impl Render + 'static) -> String {
     let mut v: Vec<u8> = vec![];
     renderable.render(&mut v).expect("Failed to render html");
+    String::from_utf8_lossy(&v).into()
+}
+
+pub fn styles(renderable: &impl Render) -> String {
+    let mut v: Vec<u8> = vec![];
+    renderable.styles(&mut v).expect("Failed to style html");
     String::from_utf8_lossy(&v).into()
 }
 
@@ -324,6 +375,7 @@ impl_element!(title);
 impl_element!(body);
 impl_element!(div);
 impl_element!(section);
+impl_element!(style);
 impl_element!(h1);
 impl_element!(h2);
 impl_element!(h3);

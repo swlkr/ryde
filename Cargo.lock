@@ -194,6 +194,23 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
+name = "css"
+version = "0.1.0"
+dependencies = [
+ "css_macros",
+]
+
+[[package]]
+name = "css_macros"
+version = "0.1.0"
+dependencies = [
+ "proc-macro-error",
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
+]
+
+[[package]]
 name = "equivalent"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -641,6 +658,7 @@ name = "ryde"
 version = "0.1.0"
 dependencies = [
  "axum 0.7.4",
+ "css",
  "html",
  "router",
  "serde",

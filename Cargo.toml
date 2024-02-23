@@ -7,6 +7,8 @@ edition = "2021"
 members = [
   "crates/css",
   "crates/css_macros",
+  "crates/db",
+  "crates/db_macros",
   "crates/html",
   "crates/router",
   "crates/router_macros",
@@ -34,3 +36,6 @@ name = "router"
 
 [[example]]
 name = "static_files"
+
+[[example]]
+name = "db"

@@ -1,0 +1,12 @@
+[package]
+name = "db"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+db_macros = { path = "../db_macros" }
+rusqlite = "0.31.0"
+tokio-rusqlite = { git = "https://github.com/programatik29/tokio-rusqlite.git", version = "0.5.1" }
+
+[dev-dependencies]
+tokio = { version = "1.36.0", features = ["rt-multi-thread", "macros"] }

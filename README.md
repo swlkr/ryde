@@ -57,16 +57,16 @@ db!(
         content text not null,
         created_at integer not null default(unixepoch())
     )",
-    (insert, "insert into todos (content) values (?)"),
+    (insert_todo, "insert into todos (content) values (?)"),
     (todos, "select * from todos order by created_at desc limit 30")
 )
 
 #[router]
 enum Route {
     #[get("/")]
-    Index,
+    TodosIndex,
     #[post("/todos")]
-    Create,
+    TodosCreate,
     #[allow(unused)]
     #[embed]
     StaticFiles
@@ -77,7 +77,7 @@ async fn main() {
     serve!("localhost:3000", Route)
 }
 
-async fn index() -> Result<Response> {
+async fn todos_index() -> Result<Response> {
     let todos = todos().await?;
     Ok(render_todos_index(todos))
 }

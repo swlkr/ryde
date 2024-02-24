@@ -1,6 +1,6 @@
 # ryde
 
-ryde is a single person, single file web development dsl for rust
+ryde is a single person, single file web development library for rust
 
 # Install
 

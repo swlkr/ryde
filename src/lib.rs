@@ -18,7 +18,7 @@ pub use static_files::{self, StaticFiles};
 pub use std::fmt::Display;
 pub use tokio::main;
 
-pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
+pub type Result<T> = std::result::Result<T, Error>;
 
 pub async fn server(ip: &str, router: Router) -> Result<()> {
     let listener = tokio::net::TcpListener::bind(ip).await?;
@@ -100,11 +100,13 @@ pub fn redirect_with_flash(route: impl Display, message: String) -> Response {
     (http::StatusCode::SEE_OTHER, headers).into_response()
 }
 
+#[derive(Debug, Clone, PartialEq)]
 pub enum Error {
     DatabaseConnectionClosed,
     DatabaseClose,
     Database(String),
     UniqueConstraintFailed(String),
+    Io(String),
 }
 
 impl IntoResponse for Error {
@@ -114,6 +116,7 @@ impl IntoResponse for Error {
             Error::DatabaseClose => "db closed".into(),
             Error::Database(err) => err,
             Error::UniqueConstraintFailed(columns) => columns,
+            Error::Io(s) => s,
         };
         Response::builder().status(500).body(body.into()).unwrap()
     }
@@ -138,6 +141,12 @@ impl From<tokio_rusqlite::Error> for Error {
             tokio_rusqlite::Error::Other(err) => Error::Database(err.to_string()),
             _ => unreachable!(),
         }
+    }
+}
+
+impl From<std::io::Error> for Error {
+    fn from(value: std::io::Error) -> Self {
+        Error::Io(value.to_string())
     }
 }
 

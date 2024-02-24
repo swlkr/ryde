@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 router_macros = { path = "../router_macros", version = "0.1.0" }
 axum-core = { version = "0.3" }
+html = { path = "../html" }
 
 [dev-dependencies]
 serde = { version = "1.0.193", features = ["serde_derive", "derive"] }

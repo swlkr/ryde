@@ -7,6 +7,7 @@ edition = "2021"
 db_macros = { path = "../db_macros" }
 rusqlite = "0.31.0"
 tokio-rusqlite = { git = "https://github.com/programatik29/tokio-rusqlite.git", version = "0.5.1" }
+serde = { version = "1.0.197", features = ["derive"] }
 
 [dev-dependencies]
 tokio = { version = "1.36.0", features = ["rt-multi-thread", "macros"] }

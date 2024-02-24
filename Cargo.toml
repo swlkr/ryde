@@ -19,11 +19,13 @@ members = [
 [dependencies]
 axum = { version = "0.7.4", features = ["macros"] }
 css = { path = "crates/css", version = "0.1.0" }
+db = { path = "crates/db", version = "0.1.0" }
 html = { path = "crates/html", version = "0.2.0" }
 router = { path = "crates/router", version = "0.1.0" }
 static_files = { path = "crates/static_files", version = "0.2.0" }
 serde = { version = "1.0.197", features = ["derive"] }
 tokio = { version = "1.36.0", features = ["rt-multi-thread", "macros"] }
+axum-extra = { version = "0.9.2", features = ["cookie", "typed-header"] }
 
 [[example]]
 name = "simple"

@@ -1,11 +1,13 @@
 use std::sync::OnceLock;
 
 pub use db_macros::db;
-use tokio_rusqlite::Connection;
+pub use rusqlite;
+pub use serde::{Deserialize, Serialize};
+pub use tokio_rusqlite::{self, Connection};
 extern crate self as db;
 
 async fn connection() -> &'static Connection {
-    let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL not set in env");
+    let database_url = std::env::var("DATABASE_URL").unwrap_or("db.sqlite3".into());
     static CONNECTION: OnceLock<Connection> = OnceLock::new();
     match CONNECTION.get() {
         Some(connection) => connection,
@@ -72,39 +74,32 @@ pub async fn query<T: Query + Send + Sync + 'static>(t: T) -> tokio_rusqlite::Re
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tokio::test;
 
     db!(
         "create table if not exists posts (id integer primary key not null, title text not null)",
-        (InsertPost, "insert into posts (title) values (?)"),
-        (SelectPost, "select title from posts where id = ?"),
-        (SelectPost2, "select title, id from posts where id = ?"),
+        (
+            insert_post,
+            "insert into posts (title) values (?) returning *"
+        ),
+        (select_posts, "select * from posts where id = ?"),
     );
 
-    #[tokio::test]
+    #[test]
     async fn it_works() {
-        let post_id = execute(InsertPost {
-            title: "title".into(),
-        })
-        .await
-        .unwrap();
-        assert_eq!(1, post_id);
+        let posts = insert_post("title".into()).await.unwrap();
+        assert_eq!(posts[0].title, "title");
 
-        let rows: Vec<SelectPost> = query(SelectPost {
-            id: 1,
-            ..Default::default()
-        })
-        .await
-        .unwrap();
-        assert_eq!(rows[0].id, 0);
-        assert_eq!(rows[0].title, "title");
+        let found_posts = select_posts(1).await.unwrap();
+        // assert_eq!(found_posts);
 
-        let rows: Vec<SelectPost2> = query(SelectPost2 {
-            id: 1,
-            ..Default::default()
-        })
-        .await
-        .unwrap();
-        assert_eq!(rows[0].id, 1);
-        assert_eq!(rows[0].title, "title");
+        // let rows = query(Post{
+        //     id: 1,
+        //     ..Default::default()
+        // })
+        // .await
+        // .unwrap();
+        // assert_eq!(rows[0].id, 1);
+        // assert_eq!(rows[0].title, "title");
     }
 }

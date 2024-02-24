@@ -29,7 +29,14 @@ mod tests {
             "display: flex"
         );
         assert_eq!("color-gray-300 justify-content-center display-flex", css.0);
-        assert_eq!(".color-gray-300{color:var(--gray-300);}.justify-content-center{justify-content:center;}.display-flex{display:flex;}", css.1);
+        assert_eq!(
+            vec![
+                ".color-gray-300{color:var(--gray-300);}",
+                ".justify-content-center{justify-content:center;}",
+                ".display-flex{display:flex;}"
+            ],
+            css.1
+        );
     }
 
     #[test]
@@ -38,7 +45,7 @@ mod tests {
             "color: var(--gray-300)",
             "dark:hover:focus:color: var(--gray-300)",
         );
-        let expected = r".color-gray-300{color:var(--gray-300);}@media(prefers-color-scheme:dark){.dark-hover-focus-color-gray-300:focus:hover{color:var(--gray-300);}}";
+        let expected = vec![".color-gray-300{color:var(--gray-300);}", "@media(prefers-color-scheme:dark){.dark-hover-focus-color-gray-300:focus:hover{color:var(--gray-300);}}"];
 
         assert_eq!(expected, css.1);
     }

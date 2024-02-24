@@ -17,7 +17,6 @@ mod tests {
             std::str::from_utf8(&bytes).unwrap(),
             "/* this is test.css */"
         );
-        // assert_eq!(static_files.test, "/static/test.css?v=13915677119532516144");
         assert_eq!(content_type, "text/css");
     }
 }

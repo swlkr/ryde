@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::{quote, ToTokens};
@@ -45,8 +47,6 @@ fn db_macro(input: Punctuated<Expr, Token![,]>) -> Result<TokenStream2> {
                     _ => todo!(),
                 },
                 Expr::Tuple(ExprTuple { elems, .. }) => {
-                    // TODO: returning * as third struct
-                    // 2 elements
                     let Some(Expr::Lit(ExprLit { lit, .. })) = elems.last() else {
                         return quote!();
                     };
@@ -70,21 +70,31 @@ fn db_macro(input: Punctuated<Expr, Token![,]>) -> Result<TokenStream2> {
                             let inputs = columns.iter().filter_map(input_column).collect::<Vec<_>>();
                             let outputs = columns.iter().filter_map(output_column).collect::<Vec<_>>();
                             let mut columns = columns.iter().map(column_from_col).collect::<Vec<_>>();
-                            columns.dedup();
+                            let columns = unique_columns(&mut columns);
                             let column_fields =
                                 columns.iter().map(|column: &&Column| column_tokens(*column)).collect::<Vec<_>>();
                             let param_fields = inputs.iter().map(|column| param_tokens(*column)).collect::<Vec<_>>();
                             let row_fields = outputs.iter().map(|column: &&Column| row_tokens(*column)).collect::<Vec<_>>();
+                            let fn_args = inputs.iter().map(|column: &&Column| fn_tokens(*column)).collect::<Vec<_>>();
+                            let struct_fields_tokens= inputs.iter().map(|column: &&Column| struct_fields_tokens(*column)).collect::<Vec<_>>();
+                            let struct_ident = syn::Ident::new(&snake_to_pascal(ident.to_string()), ident.span());
                             if column_fields.is_empty() {
-                                quote!(struct #ident;)
+                                quote!(
+                                    #[derive(Default, Debug, Deserialize, Serialize, Clone)]
+                                    struct #struct_ident;
+
+                                    async fn #ident() -> tokio_rusqlite::Result<Vec<#struct_ident>> {
+                                        db::query(#struct_ident {}).await
+                                    }
+                                )
                             } else {
                                 quote!(
-                                    #[derive(Default, Debug)]
-                                    struct #ident {
+                                    #[derive(Default, Debug, Deserialize, Serialize, Clone)]
+                                    struct #struct_ident {
                                         #(#column_fields,)*
                                     }
 
-                                    impl db::Query for #ident {
+                                    impl db::Query for #struct_ident {
                                         fn sql() -> &'static str {
                                             #sql
                                         }
@@ -100,6 +110,13 @@ fn db_macro(input: Punctuated<Expr, Token![,]>) -> Result<TokenStream2> {
                                         fn new(row: &tokio_rusqlite::Row<'_>) -> rusqlite::Result<Self> {
                                             Ok(Self { #(#row_fields,)* ..Default::default() })
                                         }
+                                    }
+
+                                    async fn #ident(#(#fn_args,)*) -> tokio_rusqlite::Result<Vec<#struct_ident>> {
+                                        db::query(#struct_ident {
+                                            #(#struct_fields_tokens,)*
+                                            ..Default::default()
+                                        }).await
                                     }
                                 )
                             }
@@ -120,6 +137,22 @@ fn db_macro(input: Punctuated<Expr, Token![,]>) -> Result<TokenStream2> {
     })
 }
 
+fn snake_to_pascal(input: String) -> String {
+    input
+        .split("_")
+        .filter(|x| !x.is_empty())
+        .map(|x| {
+            let mut chars = x.chars();
+            format!("{}{}", chars.nth(0).unwrap().to_uppercase(), chars.as_str())
+        })
+        .collect::<String>()
+}
+fn unique_columns<'a>(columns: &'a mut Vec<&'a Column>) -> &'a Vec<&'a Column> {
+    let mut seen = HashSet::new();
+    columns.retain(|item| seen.insert(*item));
+    columns
+}
+
 fn connection(url: String) -> Connection {
     let connection = Connection::open(url).expect("Failed to connect to db");
     connection
@@ -135,7 +168,7 @@ struct Table {
     columns: Vec<Column>,
 }
 
-#[derive(Default, Debug, PartialEq, Eq)]
+#[derive(Clone, Default, Debug, PartialEq, Eq, Hash)]
 struct Column {
     name: String,
     data_type: DataType,
@@ -172,33 +205,69 @@ struct Column {
 //         .collect::<Vec<_>>()
 // }
 
+impl From<&Col> for Column {
+    fn from(value: &Col) -> Self {
+        match value {
+            Col::Input(c) => c.clone(),
+            Col::Output(c) => c.clone(),
+        }
+    }
+}
+
 fn reify_columns(tables: &Vec<Table>, columns: &Vec<Col>) -> Vec<Col> {
     let schema_columns: Vec<&Column> = tables.iter().flat_map(|table| &table.columns).collect();
 
-    columns
-        .iter()
-        .map(|c| {
-            let col = match c {
-                Col::Input(col) => col,
-                Col::Output(col) => col,
-            };
+    if columns.len() == 1 && Column::from(columns.last().unwrap()).name == "*" {
+        let col = columns.last().unwrap();
+        match col {
+            Col::Input(_) => schema_columns
+                .into_iter()
+                .map(|sc| Col::Input(sc.clone()))
+                .collect(),
+            Col::Output(_) => schema_columns
+                .into_iter()
+                .map(|sc| Col::Output(sc.clone()))
+                .collect(),
+        }
+    } else {
+        columns
+            .iter()
+            .flat_map(|c| {
+                let col = match c {
+                    Col::Input(col) => col,
+                    Col::Output(col) => col,
+                };
 
-            let data_type = match schema_columns.iter().find(|c1| c1.name == col.name) {
-                Some(column) => column.data_type.clone(),
-                None => DataType::Blob,
-            };
+                let data_type = match schema_columns.iter().find(|c1| c1.name == col.name) {
+                    Some(column) => column.data_type.clone(),
+                    None => DataType::Blob,
+                };
 
-            let output = Column {
-                name: col.name.clone(),
-                data_type,
-            };
+                if col.name == "*" {
+                    schema_columns
+                        .iter()
+                        .map(|col| {
+                            let col = *col;
+                            match c {
+                                Col::Input(_) => Col::Input(col.clone()),
+                                Col::Output(_) => Col::Output(col.clone()),
+                            }
+                        })
+                        .collect()
+                } else {
+                    let output = Column {
+                        name: col.name.clone(),
+                        data_type,
+                    };
 
-            match c {
-                Col::Input(_) => Col::Input(output),
-                Col::Output(_) => Col::Output(output),
-            }
-        })
-        .collect()
+                    vec![match c {
+                        Col::Input(_) => Col::Input(output),
+                        Col::Output(_) => Col::Output(output),
+                    }]
+                }
+            })
+            .collect()
+    }
 }
 
 fn columns_from_idents(columns: &Vec<sqlparser::ast::Ident>) -> Vec<Column> {
@@ -215,8 +284,11 @@ fn column_from_select_item(select_item: &sqlparser::ast::SelectItem) -> Column {
     match select_item {
         sqlparser::ast::SelectItem::UnnamedExpr(expr) => column_from_expr(expr),
         sqlparser::ast::SelectItem::ExprWithAlias { .. } => todo!(),
-        sqlparser::ast::SelectItem::QualifiedWildcard(_, _) => todo!(),
-        sqlparser::ast::SelectItem::Wildcard(_) => todo!(),
+        sqlparser::ast::SelectItem::QualifiedWildcard(_, _)
+        | sqlparser::ast::SelectItem::Wildcard(_) => Column {
+            name: "*".into(),
+            ..Default::default()
+        },
     }
 }
 
@@ -227,8 +299,10 @@ fn column_from_expr(expr: &sqlparser::ast::Expr) -> Column {
             ..Default::default()
         },
         sqlparser::ast::Expr::CompoundIdentifier(_) => todo!(),
-        sqlparser::ast::Expr::Wildcard => todo!(),
-        sqlparser::ast::Expr::QualifiedWildcard(_) => todo!(),
+        sqlparser::ast::Expr::Wildcard | sqlparser::ast::Expr::QualifiedWildcard(_) => Column {
+            name: "*".into(),
+            ..Default::default()
+        },
         sqlparser::ast::Expr::BinaryOp { left, .. } => column_from_expr(left),
         _ => todo!(),
     }
@@ -260,7 +334,7 @@ fn columns_from_query(query: &sqlparser::ast::Query) -> Vec<Col> {
         sqlparser::ast::SetExpr::SetOperation { .. } => todo!(),
         sqlparser::ast::SetExpr::Values(_) => todo!(),
         sqlparser::ast::SetExpr::Insert(_) => todo!(),
-        sqlparser::ast::SetExpr::Update(_) => todo!(),
+        sqlparser::ast::SetExpr::Update(_) => unreachable!(),
         sqlparser::ast::SetExpr::Table(_) => todo!(),
     }
 }
@@ -268,17 +342,90 @@ fn columns_from_query(query: &sqlparser::ast::Query) -> Vec<Col> {
 fn columns(ast: &Vec<Statement>) -> Vec<Col> {
     ast.iter()
         .flat_map(|statement| match statement {
-            Statement::Insert { columns, .. } => columns_from_idents(columns)
-                .into_iter()
-                .map(|c| Col::Input(c))
-                .collect(),
+            Statement::Insert {
+                columns, returning, ..
+            } => {
+                let mut cols = if let Some(returning) = returning {
+                    returning
+                        .iter()
+                        .map(|si| column_from_select_item(si))
+                        .map(|c| Col::Output(c))
+                        .collect()
+                } else {
+                    vec![]
+                };
+                cols.extend(
+                    columns_from_idents(columns)
+                        .into_iter()
+                        .map(|c| Col::Input(c)),
+                );
+                cols
+            }
             Statement::Query(query) => columns_from_query(&query),
+            Statement::Update {
+                assignments,
+                selection,
+                returning,
+                ..
+            } => {
+                let mut cols = assignments
+                    .iter()
+                    .map(|a| {
+                        let name = if let Some(id) = a.id.last() {
+                            id.to_string()
+                        } else {
+                            "".into()
+                        };
+                        Col::Input(Column {
+                            name,
+                            ..Default::default()
+                        })
+                    })
+                    .collect::<Vec<Col>>();
+
+                if let Some(selection) = selection {
+                    cols.push(Col::Input(column_from_expr(selection)));
+                }
+
+                if let Some(returning) = returning {
+                    cols.extend(
+                        returning
+                            .iter()
+                            .map(|si| column_from_select_item(si))
+                            .map(|c| Col::Output(c)),
+                    );
+                }
+
+                cols
+            }
+            Statement::Delete {
+                selection,
+                returning,
+                ..
+            } => {
+                let mut cols = if let Some(selection) = selection {
+                    vec![Col::Input(column_from_expr(selection))]
+                } else {
+                    vec![]
+                };
+
+                if let Some(returning) = returning {
+                    cols.extend(
+                        returning
+                            .iter()
+                            .map(|si| column_from_select_item(si))
+                            .map(|c| Col::Output(c)),
+                    );
+                }
+
+                cols
+            }
             _ => vec![],
         })
         .collect::<Vec<_>>()
 }
 
-#[derive(Clone, Default, Debug, PartialEq, Eq)]
+#[derive(Clone, Default, Debug, PartialEq, Eq, Hash)]
 enum DataType {
     Integer,
     Real,
@@ -299,7 +446,7 @@ fn column(value: &sqlparser::ast::ColumnDef) -> Column {
         sqlparser::ast::DataType::Text => DataType::Text,
         _ => DataType::Any,
     };
-    let data_type = if is_null(&value.options) {
+    let data_type = if is_null(&data_type, &value.options) {
         DataType::Null(data_type.into())
     } else {
         data_type
@@ -308,11 +455,22 @@ fn column(value: &sqlparser::ast::ColumnDef) -> Column {
     Column { name, data_type }
 }
 
-fn is_null(value: &Vec<sqlparser::ast::ColumnOptionDef>) -> bool {
+fn is_null(data_type: &DataType, value: &Vec<sqlparser::ast::ColumnOptionDef>) -> bool {
     value
         .iter()
-        .find(|opt| opt.option == sqlparser::ast::ColumnOption::NotNull)
-        .is_none()
+        .filter_map(|opt| match opt.option {
+            sqlparser::ast::ColumnOption::NotNull => Some(()),
+            sqlparser::ast::ColumnOption::Unique { is_primary, .. } => {
+                if is_primary == true && data_type == &DataType::Integer {
+                    Some(())
+                } else {
+                    None
+                }
+            }
+            _ => Some(()),
+        })
+        .count()
+        == 0
 }
 
 fn table(ast: &Vec<Statement>) -> Table {
@@ -322,26 +480,10 @@ fn table(ast: &Vec<Statement>) -> Table {
             Statement::CreateTable { columns, .. } => {
                 columns.iter().map(column).collect::<Vec<_>>()
             }
-            _ => todo!(),
+            Statement::AlterTable { .. } => todo!(),
+            _ => vec![],
         })
         .collect();
-    // let name: String = ast
-    //     .iter()
-    //     .map(|statement| match statement {
-    //         Statement::CreateTable { name, .. } => name
-    //             .0
-    //             .last()
-    //             .expect(&format!(
-    //                 "could not find table name in create table statement: {}",
-    //                 statement
-    //             ))
-    //             .to_string(),
-    //         _ => todo!(),
-    //     })
-    //     .collect::<Vec<String>>()
-    //     .last()
-    //     .expect("could not find table name in create table statement")
-    //     .clone();
 
     Table { columns }
 }
@@ -392,6 +534,35 @@ fn row_tokens(column: &Column) -> TokenStream2 {
     let ident = syn::Ident::new(&lit_str, proc_macro2::Span::call_site());
 
     quote!(#ident: row.get(#lit_str)?)
+}
+
+fn fn_tokens(column: &Column) -> TokenStream2 {
+    let lit_str = &column.name;
+    let ident = syn::Ident::new(&lit_str, proc_macro2::Span::call_site());
+    let fn_type = fn_type(&column.data_type);
+
+    quote!(#ident: #fn_type)
+}
+
+fn struct_fields_tokens(column: &Column) -> TokenStream2 {
+    let lit_str = &column.name;
+    let ident = syn::Ident::new(&lit_str, proc_macro2::Span::call_site());
+
+    quote!(#ident)
+}
+
+fn fn_type(data_type: &DataType) -> TokenStream2 {
+    match data_type {
+        DataType::Integer => quote!(i64),
+        DataType::Real => quote!(f64),
+        DataType::Text => quote!(String),
+        DataType::Blob => quote!(Vec<u8>),
+        DataType::Any => quote!(Vec<u8>),
+        DataType::Null(dt) => {
+            let dt = fn_type(&*dt);
+            quote!(Option<#dt>)
+        }
+    }
 }
 
 fn is_execute(ast: &Vec<Statement>) -> bool {

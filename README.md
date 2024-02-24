@@ -82,9 +82,9 @@ async fn todos_index() -> Result<Response> {
     Ok(render_todos_index(todos))
 }
 
-async fn create(Form(todo): Form<InsertTodo>) -> Result<Response> {
+async fn todos_create(Form(todo): Form<InsertTodo>) -> Result<Response> {
     let _todo = insert_todo(todo.content).await?
-    Ok(redirect_to(Route::Index))
+    Ok(redirect_to(Route::TodosIndex))
 }
 
 fn render_todos_index(todos: Vec<Todos>) -> Response {

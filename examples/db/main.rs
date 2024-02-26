@@ -35,14 +35,6 @@ async fn index() -> Result<Response> {
     Ok(render(index_view("", todos)))
 }
 
-fn index_view(msg: &'static str, todos: Vec<Todos>) -> Element {
-    div((
-        h1("todos"),
-        div((todo_list(todos), todo_form(None))),
-        div(msg),
-    ))
-}
-
 async fn todos_create(Form(todo): Form<InsertTodo>) -> Result<Response> {
     let result = insert_todo(todo.content).await;
 
@@ -81,7 +73,7 @@ async fn todos_delete(Path(id): Path<i64>) -> Result<Response> {
 }
 
 fn todo_form(todo: Option<Todo>) -> Element {
-    let route = match todo.as_ref() {
+    let route = match &todo {
         Some(t) => Route::TodosUpdate(t.id),
         None => Route::TodosCreate,
     };
@@ -110,6 +102,14 @@ fn delete_todo_form(id: i64) -> Element {
 
 fn todo_list(todos: Vec<Todos>) -> Element {
     ul(todos.into_iter().map(todo_list_item).collect::<Vec<_>>())
+}
+
+fn index_view(msg: &'static str, todos: Vec<Todos>) -> Element {
+    div((
+        h1("todos"),
+        div((todo_list(todos), todo_form(None))),
+        div(msg),
+    ))
 }
 
 fn todo_list_item(todo: Todos) -> Element {

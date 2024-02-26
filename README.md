@@ -10,7 +10,7 @@ cd your-project
 cargo add ryde
 ```
 
-# A simple example
+# Quickstart
 
 Open up your-project/src/main.rs in your favorite editor
 
@@ -18,23 +18,22 @@ Open up your-project/src/main.rs in your favorite editor
 // src/main.rs
 use ryde::*;
 
-#[router]
-enum Route {
-    #[get("/")]
-    Index
-    #[allow(unused)]
-    #[embed]
-    StaticFiles
-}
+route!(
+    (get, "/", index),
+    (get, "/*files", static_files) // serves the static files from the root path /test.css, /app.js
+);
 
-#[main]
-async fn main() {
-    serve!("localhost:3000", Route);
+// embeds the files in the static/ folder at the root of your-project
+// in the binary
+embed_static_files!("static");
+
+fn main() {
+    serve!("::1:3000");
 }
 
 async fn index() -> Response {
     document()
-        .head((title("ryde with rust"), render!(StaticFiles)))
+        .head((title("ryde with rust"), render_static_files!()))
         .body(
             h1("ryde with rust")
                 .css(css!(
@@ -44,9 +43,14 @@ async fn index() -> Response {
         )
         .render()
 }
+
+// serves the embedded static files
+async fn static_files(uri: Uri) -> Response {
+    serve_static_files!(uri)
+}
 ```
 
-# A more complete example
+# A longer example
 
 ```rust
 // src/main.rs
@@ -59,22 +63,18 @@ db!(
     )",
     (insert_todo, "insert into todos (content) values (?)"),
     (todos, "select * from todos order by created_at desc limit 30")
-)
+);
 
-#[router]
-enum Route {
-    #[get("/")]
-    TodosIndex,
-    #[post("/todos")]
-    TodosCreate,
-    #[allow(unused)]
-    #[embed]
-    StaticFiles
-}
+route!(
+    (get, "/", todos_index),
+    (post, "/todos", todos_create),
+    (get, "/*files", static_files)
+);
 
-#[main]
-async fn main() {
-    serve!("localhost:3000", Route)
+embed_static_files!("static");
+
+fn main() {
+    serve!("::1:3000")
 }
 
 async fn todos_index() -> Result<Response> {
@@ -85,6 +85,10 @@ async fn todos_index() -> Result<Response> {
 async fn todos_create(Form(todo): Form<InsertTodo>) -> Result<Response> {
     let _todo = insert_todo(todo.content).await?
     Ok(redirect_to(Route::TodosIndex))
+}
+
+async fn static_files(uri: Uri) -> Response {
+    serve_static_files!(uri)
 }
 
 fn render_todos_index(todos: Vec<Todos>) -> Response {
@@ -125,8 +129,4 @@ fn render(element: Element) -> Response {
 
 # More examples
 
-Clone the repo and check out the examples!
-
-```sh
-cargo run --example simple
-```
+Clone the repo and check out the rest of examples!

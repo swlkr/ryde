@@ -129,6 +129,24 @@ pub fn redirect_with_flash(route: impl Display, message: String) -> Response {
     (http::StatusCode::SEE_OTHER, headers).into_response()
 }
 
+#[macro_export]
+macro_rules! is_unique {
+    ($expr:expr) => {
+        is_unique($expr.map_err(Error::from).err())
+    };
+}
+
+pub fn is_unique(err: Option<Error>) -> Result<bool> {
+    let Some(err) = err else {
+        return Ok(true);
+    };
+
+    match err {
+        Error::UniqueConstraintFailed(_) => Ok(false),
+        err => Err(err),
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Error {
     DatabaseConnectionClosed,

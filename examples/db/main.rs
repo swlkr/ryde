@@ -32,33 +32,28 @@ fn main() {
 async fn index() -> Result<Response> {
     let todos = todos().await?;
 
-    Ok(render(index_view(None, todos)))
+    Ok(render(index_view("", todos)))
 }
 
-fn index_view(error: Option<Error>, todos: Vec<Todos>) -> Element {
+fn index_view(msg: &'static str, todos: Vec<Todos>) -> Element {
     div((
         h1("todos"),
-        match error {
-            Some(err) => match err {
-                Error::UniqueConstraintFailed(_) => div("todo with that name already exists"),
-                _ => div(()),
-            },
-            None => div(()),
-        },
         div((todo_list(todos), todo_form(None))),
+        div(msg),
     ))
 }
 
 async fn todos_create(Form(todo): Form<InsertTodo>) -> Result<Response> {
-    let result = insert_todo(todo.content)
-        .await
-        .map_err(|err| Error::from(err));
-    let todos = todos().await?;
+    let result = insert_todo(todo.content).await;
 
-    Ok(match result {
-        Ok(_) => redirect_to(Route::Index),
-        Err(err) => render(index_view(Some(err), todos)),
-    })
+    let res = if is_unique!(result)? {
+        redirect_to(Route::Index)
+    } else {
+        let todos = todos().await?;
+        render(index_view("todo already exists", todos))
+    };
+
+    Ok(res)
 }
 
 async fn todos_edit(Path(id): Path<i64>) -> Result<Response> {
@@ -67,15 +62,16 @@ async fn todos_edit(Path(id): Path<i64>) -> Result<Response> {
 }
 
 async fn todos_update(Path(id): Path<i64>, Form(todo): Form<UpdateTodo>) -> Result<Response> {
-    let result = update_todo(todo.content, id)
-        .await
-        .map_err(|err| Error::from(err));
-    let todos = todos().await?;
+    let result = update_todo(todo.content, id).await;
 
-    Ok(match result {
-        Ok(_) => redirect_to(Route::Index),
-        Err(err) => render(index_view(Some(err), todos)),
-    })
+    let res = if is_unique!(result)? {
+        redirect_to(Route::Index)
+    } else {
+        let todos = todos().await?;
+        render(index_view("todo already exists", todos))
+    };
+
+    Ok(res)
 }
 
 async fn todos_delete(Path(id): Path<i64>) -> Result<Response> {

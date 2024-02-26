@@ -1,7 +1,7 @@
 [package]
-name = "css"
+name = "ryde_css"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-css_macros = { path = "../css_macros" }
+ryde_css_macros = { path = "../css_macros" }

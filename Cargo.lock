@@ -301,23 +301,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "css"
-version = "0.1.0"
-dependencies = [
- "css_macros",
-]
-
-[[package]]
-name = "css_macros"
-version = "0.1.0"
-dependencies = [
- "proc-macro-error",
- "proc-macro2",
- "quote",
- "syn 1.0.109",
-]
-
-[[package]]
 name = "db"
 version = "0.1.0"
 dependencies = [
@@ -910,13 +893,30 @@ version = "0.1.0"
 dependencies = [
  "axum 0.7.4",
  "axum-extra",
- "css",
  "db",
  "html",
  "router",
+ "ryde_css",
  "serde",
  "static_files",
  "tokio",
+]
+
+[[package]]
+name = "ryde_css"
+version = "0.1.0"
+dependencies = [
+ "ryde_css_macros",
+]
+
+[[package]]
+name = "ryde_css_macros"
+version = "0.1.0"
+dependencies = [
+ "proc-macro-error",
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
 ]
 
 [[package]]

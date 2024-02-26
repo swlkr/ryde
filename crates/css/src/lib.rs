@@ -1,6 +1,6 @@
 extern crate self as css;
 
-pub use css_macros::css;
+pub use ryde_css_macros::css;
 
 #[cfg(test)]
 mod tests {

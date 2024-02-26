@@ -71,6 +71,28 @@ pub async fn query<T: Query + Send + Sync + 'static>(t: T) -> tokio_rusqlite::Re
         .into()
 }
 
+pub async fn query_one<T: Clone + Query + Send + Sync + 'static>(
+    t: T,
+) -> tokio_rusqlite::Result<Option<T>> {
+    connection()
+        .await
+        .call(move |conn| {
+            let sql = T::sql();
+            let mut stmt = conn.prepare(sql)?;
+            let params_iter = t.params();
+            let params = tokio_rusqlite::params_from_iter(params_iter);
+            let rows = stmt
+                .query_map(params, |row| T::new(row))?
+                .collect::<rusqlite::Result<Vec<T>>>();
+            match rows {
+                Ok(rows) => Ok(rows.last().cloned()),
+                Err(err) => Err(err.into()),
+            }
+        })
+        .await
+        .into()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -78,13 +78,18 @@ fn db_macro(input: Punctuated<Expr, Token![,]>) -> Result<TokenStream2> {
                             let fn_args = inputs.iter().map(|column: &&Column| fn_tokens(*column)).collect::<Vec<_>>();
                             let struct_fields_tokens= inputs.iter().map(|column: &&Column| struct_fields_tokens(*column)).collect::<Vec<_>>();
                             let struct_ident = syn::Ident::new(&snake_to_pascal(ident.to_string()), ident.span());
+                            let has_limit = limit_one(&ast);
+                            let (query_fn, return_value) = match has_limit {
+                                true => (quote! { query_one }, quote! { Option<#struct_ident> }),
+                                false => (quote! { query }, quote! { Vec<#struct_ident> })
+                            };
                             if column_fields.is_empty() {
                                 quote!(
                                     #[derive(Default, Debug, Deserialize, Serialize, Clone)]
                                     struct #struct_ident;
 
-                                    async fn #ident() -> tokio_rusqlite::Result<Vec<#struct_ident>> {
-                                        db::query(#struct_ident {}).await
+                                    async fn #ident() -> tokio_rusqlite::Result<#return_value> {
+                                        db::#query_fn(#struct_ident {}).await
                                     }
                                 )
                             } else {
@@ -112,8 +117,8 @@ fn db_macro(input: Punctuated<Expr, Token![,]>) -> Result<TokenStream2> {
                                         }
                                     }
 
-                                    async fn #ident(#(#fn_args,)*) -> tokio_rusqlite::Result<Vec<#struct_ident>> {
-                                        db::query(#struct_ident {
+                                    async fn #ident(#(#fn_args,)*) -> tokio_rusqlite::Result<#return_value> {
+                                        db::#query_fn(#struct_ident {
                                             #(#struct_fields_tokens,)*
                                             ..Default::default()
                                         }).await
@@ -538,6 +543,27 @@ fn is_execute(ast: &Vec<Statement>) -> bool {
         .find(|statement| match statement {
             // TODO: check returning and return false here instead?
             Statement::Insert { .. } | Statement::Update { .. } | Statement::Delete { .. } => true,
+            _ => false,
+        })
+        .is_some()
+}
+
+fn limit_one(ast: &Vec<Statement>) -> bool {
+    ast.iter()
+        .find(|statement| match statement {
+            Statement::Query(query) => match &query.limit {
+                Some(expr) => match expr {
+                    sqlparser::ast::Expr::Value(value) => match value {
+                        sqlparser::ast::Value::Number(x, _) => match x.parse::<i64>() {
+                            Ok(x) => x == 1,
+                            Err(_) => false,
+                        },
+                        _ => false,
+                    },
+                    _ => false,
+                },
+                None => false,
+            },
             _ => false,
         })
         .is_some()

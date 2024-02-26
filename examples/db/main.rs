@@ -18,7 +18,7 @@ db!(
     (insert_todo, "insert into todos (content) values (?)"),
     (update_todo, "update todos set content = ? where id = ?"),
     (delete_todo, "delete from todos where id = ?"),
-    (todo, "select * from todos where id = ?"),
+    (todo, "select * from todos where id = ? limit 1"),
     (
         todos,
         "select * from todos order by created_at desc limit 30"
@@ -57,7 +57,7 @@ async fn todos_create(Form(todo): Form<InsertTodo>) -> Result<Response> {
 }
 
 async fn todos_edit(Path(id): Path<i64>) -> Result<Response> {
-    let todo = todo(id).await?.last().cloned();
+    let todo = todo(id).await?;
     Ok(render(div((h1("edit todo"), todo_form(todo)))))
 }
 

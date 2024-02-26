@@ -175,37 +175,6 @@ struct Column {
     data_type: DataType,
 }
 
-// fn table_name(table_factor: &sqlparser::ast::TableFactor) -> String {
-//     match table_factor {
-//         sqlparser::ast::TableFactor::Table { name, .. } => name.0.last().unwrap().value.to_owned(),
-//         _ => todo!(),
-//     }
-// }
-
-// fn table_names(ast: &Vec<Statement>) -> Vec<String> {
-//     ast.iter()
-//         .flat_map(|statement| match statement {
-//             Statement::Insert { table_name, .. } => {
-//                 vec![table_name.to_string()]
-//             }
-//             Statement::Query(query) => match &*query.body {
-//                 sqlparser::ast::SetExpr::Select(select) => select
-//                     .from
-//                     .iter()
-//                     .flat_map(|f| {
-//                         let mut table_names = vec![table_name(&f.relation)];
-//                         table_names.extend(f.joins.iter().map(|j| table_name(&j.relation)));
-
-//                         table_names
-//                     })
-//                     .collect::<Vec<_>>(),
-//                 _ => todo!(),
-//             },
-//             _ => todo!(),
-//         })
-//         .collect::<Vec<_>>()
-// }
-
 impl From<&Col> for Column {
     fn from(value: &Col) -> Self {
         match value {
@@ -314,8 +283,6 @@ enum Col {
     Input(Column),
     Output(Column),
 }
-// find columns as params (anything that's a BinaryOp?)
-// find columns in select part
 
 fn columns_from_query(query: &sqlparser::ast::Query) -> Vec<Col> {
     match &*query.body {

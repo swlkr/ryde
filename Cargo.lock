@@ -301,29 +301,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "db"
-version = "0.1.0"
-dependencies = [
- "db_macros",
- "rusqlite",
- "serde",
- "tokio",
- "tokio-rusqlite",
-]
-
-[[package]]
-name = "db_macros"
-version = "0.1.0"
-dependencies = [
- "proc-macro-error",
- "proc-macro2",
- "quote",
- "rusqlite",
- "sqlparser",
- "syn 1.0.109",
-]
-
-[[package]]
 name = "deranged"
 version = "0.3.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -893,10 +870,10 @@ version = "0.1.0"
 dependencies = [
  "axum 0.7.4",
  "axum-extra",
- "db",
  "html",
  "router",
  "ryde_css",
+ "ryde_db",
  "serde",
  "static_files",
  "tokio",
@@ -916,6 +893,29 @@ dependencies = [
  "proc-macro-error",
  "proc-macro2",
  "quote",
+ "syn 1.0.109",
+]
+
+[[package]]
+name = "ryde_db"
+version = "0.1.0"
+dependencies = [
+ "rusqlite",
+ "ryde_db_macros",
+ "serde",
+ "tokio",
+ "tokio-rusqlite",
+]
+
+[[package]]
+name = "ryde_db_macros"
+version = "0.1.0"
+dependencies = [
+ "proc-macro-error",
+ "proc-macro2",
+ "quote",
+ "rusqlite",
+ "sqlparser",
  "syn 1.0.109",
 ]
 

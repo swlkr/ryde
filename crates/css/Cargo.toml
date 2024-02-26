@@ -2,6 +2,12 @@
 name = "ryde_css"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
+readme = "README.md"
+homepage = "https://github.com/swlkr/ryde"
+repository = "https://github.com/swlkr/ryde"
+keywords = ["ryde", "css"]
+description = "ryde css crate"
 
 [dependencies]
 ryde_css_macros = { path = "../css_macros" }

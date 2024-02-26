@@ -1,7 +1,7 @@
 use std::sync::OnceLock;
 
-pub use db_macros::db;
 pub use rusqlite;
+pub use ryde_db_macros::db;
 pub use serde::{Deserialize, Serialize};
 pub use tokio_rusqlite::{self, Connection};
 extern crate self as db;

@@ -1,4 +1,4 @@
-pub use router_macros::{router, Routes};
+pub use router_macros::{route, router, Routes};
 extern crate self as router;
 
 #[cfg(test)]

@@ -1,16 +1,11 @@
 use ryde::*;
 
-#[main]
-async fn main() {
-    serve!("localhost:3000", Route)
+route!((get, "/", index));
+
+fn main() {
+    serve!("::1:3000")
 }
 
-async fn index() -> String {
-    Route::Index.to_string()
-}
-
-#[router]
-enum Route {
-    #[get("/")]
-    Index,
+async fn index() -> Response {
+    res!(Route::Index)
 }

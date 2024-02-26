@@ -147,6 +147,7 @@ fn snake_to_pascal(input: String) -> String {
         })
         .collect::<String>()
 }
+
 fn unique_columns<'a>(columns: &'a mut Vec<&'a Column>) -> &'a Vec<&'a Column> {
     let mut seen = HashSet::new();
     columns.retain(|item| seen.insert(*item));

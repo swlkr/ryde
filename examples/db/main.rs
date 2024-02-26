@@ -1,19 +1,12 @@
 use ryde::*;
 
-#[router]
-enum Route {
-    #[get("/")]
-    Index,
-    #[post("/todos")]
-    CreateTodo,
-    #[allow(unused)]
-    #[get("/todos/:id/edit")]
-    EditTodo(i64),
-    #[post("/todos/:id/edit")]
-    ChangeTodo(i64),
-    #[post("/todos/:id/delete")]
-    DestroyTodo(i64),
-}
+route!(
+    (get, "/", index),
+    (post, "/todos", todos_create),
+    (get, "/todos/:id/edit", todos_edit, i64),
+    (post, "/todos/:id/edit", todos_update, i64),
+    (post, "/todos/:id/delete", todos_delete, i64)
+);
 
 db!(
     "create table if not exists todos (
@@ -32,9 +25,8 @@ db!(
     ),
 );
 
-#[main]
-async fn main() {
-    serve!("localhost:3000", Route)
+fn main() {
+    serve!("::1:3000")
 }
 
 async fn index() -> Result<Response> {
@@ -57,7 +49,7 @@ fn index_view(error: Option<Error>, todos: Vec<Todos>) -> Element {
     ))
 }
 
-async fn create_todo(Form(todo): Form<InsertTodo>) -> Result<Response> {
+async fn todos_create(Form(todo): Form<InsertTodo>) -> Result<Response> {
     let result = insert_todo(todo.content)
         .await
         .map_err(|err| Error::from(err));
@@ -69,12 +61,12 @@ async fn create_todo(Form(todo): Form<InsertTodo>) -> Result<Response> {
     })
 }
 
-async fn edit_todo(Path(id): Path<i64>) -> Result<Response> {
+async fn todos_edit(Path(id): Path<i64>) -> Result<Response> {
     let todo = todo(id).await?.last().cloned();
     Ok(render(div((h1("edit todo"), todo_form(todo)))))
 }
 
-async fn change_todo(Path(id): Path<i64>, Form(todo): Form<UpdateTodo>) -> Result<Response> {
+async fn todos_update(Path(id): Path<i64>, Form(todo): Form<UpdateTodo>) -> Result<Response> {
     let result = update_todo(todo.content, id)
         .await
         .map_err(|err| Error::from(err));
@@ -86,7 +78,7 @@ async fn change_todo(Path(id): Path<i64>, Form(todo): Form<UpdateTodo>) -> Resul
     })
 }
 
-async fn destroy_todo(Path(id): Path<i64>) -> Result<Response> {
+async fn todos_delete(Path(id): Path<i64>) -> Result<Response> {
     let _ = delete_todo(id).await?;
 
     Ok(redirect_to(Route::Index))
@@ -94,8 +86,8 @@ async fn destroy_todo(Path(id): Path<i64>) -> Result<Response> {
 
 fn todo_form(todo: Option<Todo>) -> Element {
     let route = match todo.as_ref() {
-        Some(t) => Route::ChangeTodo(t.id),
-        None => Route::CreateTodo,
+        Some(t) => Route::TodosUpdate(t.id),
+        None => Route::TodosCreate,
     };
     let (id, content) = match todo {
         Some(t) => (t.id, t.content),
@@ -116,7 +108,7 @@ fn todo_form(todo: Option<Todo>) -> Element {
 
 fn delete_todo_form(id: i64) -> Element {
     form(input().type_("submit").value("delete"))
-        .action(Route::DestroyTodo(id))
+        .action(Route::TodosDelete(id))
         .method("POST")
 }
 
@@ -129,7 +121,7 @@ fn todo_list_item(todo: Todos) -> Element {
 
     li((
         div((todo.id, ", ", todo.content, ", ", todo.created_at)),
-        a("edit").href(Route::EditTodo(todo.id)),
+        a("edit").href(Route::TodosEdit(todo.id)),
         delete_todo_form(todo.id),
     ))
     .css(css)
@@ -138,5 +130,3 @@ fn todo_list_item(todo: Todos) -> Element {
 fn render(element: Element) -> Response {
     document().head(()).body(element).render()
 }
-
-type Result<T> = std::result::Result<T, Error>;

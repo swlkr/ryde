@@ -2,9 +2,132 @@ use proc_macro::TokenStream;
 use proc_macro2::{Span, TokenStream as TokenStream2};
 use quote::{quote, ToTokens};
 use syn::{
-    parse::Parse, parse_macro_input, Attribute, Data, DeriveInput, Fields, FieldsNamed,
-    FieldsUnnamed, Ident, ItemEnum, LitStr, Result, Type, Variant,
+    parse::Parse, parse_macro_input, punctuated::Punctuated, Attribute, Data, DeriveInput, Expr,
+    Fields, FieldsNamed, FieldsUnnamed, Ident, ItemEnum, LitStr, Result, Token, Type, Variant,
 };
+
+#[proc_macro]
+pub fn route(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input with Punctuated::<Expr, Token![,]>::parse_terminated);
+    match route_macro(input) {
+        Ok(s) => s.to_token_stream().into(),
+        Err(e) => e.to_compile_error().into(),
+    }
+}
+
+fn route_macro(input: Punctuated<Expr, Token![,]>) -> Result<TokenStream2> {
+    let fields = input.iter().flat_map(|expr| match expr {
+        Expr::Tuple(expr_tuple) => field(&expr_tuple.elems),
+        _ => unimplemented!(),
+    });
+
+    Ok(quote! {
+        #[allow(unused)]
+        #[router]
+        enum Route {
+            #(#fields,)*
+        }
+    })
+}
+
+fn field(input: &Punctuated<Expr, Token![,]>) -> Result<TokenStream2> {
+    let mut iter = input.iter();
+    let (left, middle, right, rest) = (iter.next(), iter.next(), iter.next(), iter);
+
+    let method_ident = match left {
+        Some(expr) => match expr {
+            Expr::Path(expr_path) => expr_path.path.get_ident(),
+            _ => unimplemented!(),
+        },
+        None => unimplemented!(),
+    };
+    let method_ident = method_ident.expect("Needs to be an http method or embed");
+
+    let route = match middle {
+        Some(expr) => match expr {
+            Expr::Lit(expr_lit) => match expr_lit.lit {
+                syn::Lit::Str(ref lit_str) => lit_str,
+                _ => unimplemented!(),
+            },
+            _ => unimplemented!(),
+        },
+        None => unimplemented!(),
+    };
+
+    let fn_ident = match right {
+        Some(expr) => match expr {
+            Expr::Path(expr_path) => expr_path.path.get_ident().cloned(),
+            _ => unimplemented!(),
+        },
+        None => Some(Ident::new("StaticFiles", Span::call_site())),
+    };
+    let fn_ident = fn_ident.expect("Needs to be a function handler name");
+    let fn_ident = Ident::new(&snake_to_pascal(fn_ident.to_string()), fn_ident.span());
+
+    let params = rest
+        .map(|expr| match expr {
+            Expr::Path(expr_path) => match expr_path.path.get_ident() {
+                Some(ident) => Param::Ident(quote! { #ident }),
+                None => Param::None,
+            },
+            Expr::Type(expr_type) => Param::Type(quote! { #expr_type }),
+            _ => Param::None,
+        })
+        .collect::<Vec<_>>();
+    let surround = params
+        .iter()
+        .map(|p| match p {
+            Param::Ident(_) => Surround::Paren,
+            Param::Type(_) => Surround::Curly,
+            Param::None => Surround::None,
+        })
+        .last();
+    let params = params
+        .iter()
+        .map(|p| match p {
+            Param::Ident(tokens) => quote! { #tokens },
+            Param::Type(tokens) => quote! { #tokens},
+            Param::None => quote! {},
+        })
+        .collect::<Vec<_>>();
+
+    let params = match surround {
+        Some(s) => match s {
+            Surround::Paren => quote! { (#(#params,)*) },
+            Surround::Curly => quote! { {#(#params,)*} },
+            Surround::None => quote! {},
+        },
+        None => quote! {},
+    };
+
+    Ok(quote! {
+        #[#method_ident(#route)]
+        #fn_ident #params
+    })
+}
+
+enum Param {
+    Ident(TokenStream2),
+    Type(TokenStream2),
+    None,
+}
+
+enum Surround {
+    Paren,
+    Curly,
+    None,
+}
+
+fn snake_to_pascal(input: String) -> String {
+    input
+        .split("_")
+        .filter(|x| !x.is_empty())
+        .map(|x| {
+            let mut chars = x.chars();
+            format!("{}{}", chars.nth(0).unwrap().to_uppercase(), chars.as_str())
+        })
+        .collect::<String>()
+}
 
 struct Args {
     state: Option<Type>,

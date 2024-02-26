@@ -2,6 +2,7 @@ extern crate self as ryde;
 pub use axum::extract::*;
 pub use axum::http;
 pub use axum::http::header::*;
+pub use axum::http::Uri;
 pub use axum::response::*;
 pub use axum::*;
 pub use axum_extra::extract::*;
@@ -12,33 +13,61 @@ pub use db::db;
 pub use db::rusqlite;
 pub use db::tokio_rusqlite;
 pub use html::*;
-pub use router::{router, Routes};
+pub use router::{route, router, Routes};
 pub use serde::*;
 pub use static_files::{self, StaticFiles};
 pub use std::fmt::Display;
-pub use tokio::main;
+pub use tokio::*;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-pub async fn server(ip: &str, router: Router) -> Result<()> {
-    let listener = tokio::net::TcpListener::bind(ip).await?;
-    println!("Listening on {}", ip);
-    axum::serve(listener, router).await?;
+pub fn server(ip: &str, router: Router) -> Result<()> {
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(async {
+        let listener = tokio::net::TcpListener::bind(ip).await.unwrap();
+        println!("Listening on {}", ip);
+        axum::serve(listener, router).await.unwrap();
+    });
     Ok(())
 }
 
 #[macro_export]
 macro_rules! serve {
-    ($ip:expr, $ident:ident) => {
-        server($ip, $ident::router()).await.unwrap()
+    ($ip:expr) => {
+        server($ip, Route::router()).unwrap()
+    };
+    ($ip:expr, $router:expr) => {
+        server($ip, $router).unwrap()
     };
 }
 
 #[macro_export]
-macro_rules! render {
-    ($ident:ident) => {
-        $ident::render()
+macro_rules! embed_static_files {
+    ($expr:expr) => {
+        #[derive(static_files::StaticFiles)]
+        #[folder($expr)]
+        struct StaticFiles;
     };
+}
+
+#[macro_export]
+macro_rules! render_static_files {
+    () => {{
+        StaticFiles::render()
+    }};
+}
+
+#[macro_export]
+macro_rules! res {
+    ($expr:expr) => {{
+        impl IntoResponse for Route {
+            fn into_response(self) -> Response {
+                self.to_string().into_response()
+            }
+        }
+
+        $expr.into_response()
+    }};
 }
 
 pub type Html = axum::response::Html<String>;
@@ -148,6 +177,28 @@ impl From<std::io::Error> for Error {
     fn from(value: std::io::Error) -> Self {
         Error::Io(value.to_string())
     }
+}
+
+#[macro_export]
+macro_rules! serve_static_files {
+    ($expr:expr) => {{
+        async fn serve_static_files(uri: axum::http::Uri) -> impl axum::response::IntoResponse {
+            match StaticFiles::get(uri.path()) {
+                Some((content_type, bytes)) => (
+                    axum::http::StatusCode::OK,
+                    [(axum::http::header::CONTENT_TYPE, content_type)],
+                    bytes,
+                ),
+                None => (
+                    axum::http::StatusCode::NOT_FOUND,
+                    [(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")],
+                    "not found".as_bytes(),
+                ),
+            }
+        }
+
+        serve_static_files($expr).await.into_response()
+    }};
 }
 
 #[cfg(test)]

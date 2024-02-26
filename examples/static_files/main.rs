@@ -1,14 +1,11 @@
 use ryde::*;
 
-#[main]
-async fn main() {
-    serve!("localhost:3000", Routes)
+route!((get, "/*files", static_files));
+
+fn main() {
+    serve!("localhost:3000")
 }
 
-#[router]
-enum Routes {
-    #[allow(unused)]
-    #[embed]
-    #[folder("examples/static_files/static")]
-    StaticFiles,
+async fn static_files(uri: Uri) -> Response {
+    serve_static_files!("examples/static_files/static", uri)
 }

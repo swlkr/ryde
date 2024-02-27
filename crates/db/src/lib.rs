@@ -4,7 +4,7 @@ pub use rusqlite;
 pub use ryde_db_macros::db;
 pub use serde::{Deserialize, Serialize};
 pub use tokio_rusqlite::{self, Connection};
-extern crate self as db;
+extern crate self as ryde_db;
 
 async fn connection() -> &'static Connection {
     let database_url = std::env::var("DATABASE_URL").unwrap_or("db.sqlite3".into());

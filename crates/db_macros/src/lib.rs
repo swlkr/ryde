@@ -89,7 +89,7 @@ fn db_macro(input: Punctuated<Expr, Token![,]>) -> Result<TokenStream2> {
                                     struct #struct_ident;
 
                                     async fn #ident() -> tokio_rusqlite::Result<#return_value> {
-                                        db::#query_fn(#struct_ident {}).await
+                                        ryde_db::#query_fn(#struct_ident {}).await
                                     }
                                 )
                             } else {
@@ -99,7 +99,7 @@ fn db_macro(input: Punctuated<Expr, Token![,]>) -> Result<TokenStream2> {
                                         #(#column_fields,)*
                                     }
 
-                                    impl db::Query for #struct_ident {
+                                    impl ryde_db::Query for #struct_ident {
                                         fn sql() -> &'static str {
                                             #sql
                                         }
@@ -118,7 +118,7 @@ fn db_macro(input: Punctuated<Expr, Token![,]>) -> Result<TokenStream2> {
                                     }
 
                                     async fn #ident(#(#fn_args,)*) -> tokio_rusqlite::Result<#return_value> {
-                                        db::#query_fn(#struct_ident {
+                                        ryde_db::#query_fn(#struct_ident {
                                             #(#struct_fields_tokens,)*
                                             ..Default::default()
                                         }).await

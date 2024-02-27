@@ -158,7 +158,7 @@ fn router_macro(args: Args, item_enum: ItemEnum) -> Result<TokenStream2> {
     };
 
     let expanded = quote! {
-        #[derive(router::Routes)]
+        #[derive(ryde_router::Routes)]
         #[state(#attr)]
         #item_enum
     };

@@ -1,4 +1,4 @@
-pub use router_macros::{route, router, Routes};
+pub use ryde_router_macros::{route, router, Routes};
 extern crate self as router;
 
 #[cfg(test)]

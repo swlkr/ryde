@@ -1,5 +1,5 @@
 [package]
-name = "static_files_macros"
+name = "ryde_static_files_macros"
 version = "0.2.0"
 edition = "2021"
 

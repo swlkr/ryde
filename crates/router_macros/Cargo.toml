@@ -1,12 +1,12 @@
 [package]
-name = "router_macros"
+name = "ryde_router_macros"
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
 readme = "README.md"
 homepage = "https://github.com/swlkr/ryde"
 repository = "https://github.com/swlkr/ryde"
-keywords = ["router_macros"]
+keywords = ["ryde", "router_macros"]
 description = "Macros for the router crate in ryde"
 
 [lib]
@@ -17,4 +17,4 @@ proc-macro2 = "1"
 quote = "1"
 syn = { version = "1", features = ["full"] }
 proc-macro-error = "1"
-static_files = { path = "../static_files" }
+ryde_static_files = { path = "../static_files" }

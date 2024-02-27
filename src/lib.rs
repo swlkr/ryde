@@ -8,14 +8,14 @@ pub use axum::*;
 pub use axum_extra::extract::*;
 pub use axum_extra::headers;
 pub use cookie::Cookie;
-pub use html::*;
-pub use router::{route, router, Routes};
 pub use ryde_css::css;
 pub use ryde_db::db;
 pub use ryde_db::rusqlite;
 pub use ryde_db::tokio_rusqlite;
+pub use ryde_html::{self as html, *};
+pub use ryde_router::{route, router, Routes};
+pub use ryde_static_files::{self as static_files, StaticFiles};
 pub use serde::*;
-pub use static_files::{self, StaticFiles};
 pub use std::fmt::Display;
 pub use tokio::*;
 

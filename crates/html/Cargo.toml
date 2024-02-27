@@ -1,11 +1,11 @@
 [package]
-name = "html"
+name = "ryde_html"
 version = "0.2.0"
 edition = "2021"
 license = "MIT"
 readme = "README.md"
-homepage = "https://github.com/swlkr/html"
-repository = "https://github.com/swlkr/html"
+homepage = "https://github.com/swlkr/ryde"
+repository = "https://github.com/swlkr/ryde"
 keywords = ["html", "template", "ssr", "web"]
 description = "An ergonomic way to render html using plain old rust"
 

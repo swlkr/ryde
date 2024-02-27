@@ -482,14 +482,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bd5256b483761cd23699d0da46cc6fd2ee3be420bbe6d020ae4a091e70b7e9fd"
 
 [[package]]
-name = "html"
-version = "0.2.0"
-dependencies = [
- "axum-core 0.4.3",
- "seq-macro",
-]
-
-[[package]]
 name = "http"
 version = "0.2.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -815,30 +807,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "router"
-version = "0.1.0"
-dependencies = [
- "axum 0.6.20",
- "axum-core 0.3.4",
- "html",
- "router_macros",
- "serde",
- "tokio",
- "tower",
-]
-
-[[package]]
-name = "router_macros"
-version = "0.1.0"
-dependencies = [
- "proc-macro-error",
- "proc-macro2",
- "quote",
- "static_files",
- "syn 1.0.109",
-]
-
-[[package]]
 name = "rusqlite"
 version = "0.31.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -870,12 +838,12 @@ version = "0.1.0"
 dependencies = [
  "axum 0.7.4",
  "axum-extra",
- "html",
- "router",
  "ryde_css",
  "ryde_db",
+ "ryde_html",
+ "ryde_router",
+ "ryde_static_files",
  "serde",
- "static_files",
  "tokio",
 ]
 
@@ -916,6 +884,55 @@ dependencies = [
  "quote",
  "rusqlite",
  "sqlparser",
+ "syn 1.0.109",
+]
+
+[[package]]
+name = "ryde_html"
+version = "0.2.0"
+dependencies = [
+ "axum-core 0.4.3",
+ "seq-macro",
+]
+
+[[package]]
+name = "ryde_router"
+version = "0.1.0"
+dependencies = [
+ "axum 0.6.20",
+ "axum-core 0.3.4",
+ "ryde_html",
+ "ryde_router_macros",
+ "serde",
+ "tokio",
+ "tower",
+]
+
+[[package]]
+name = "ryde_router_macros"
+version = "0.1.0"
+dependencies = [
+ "proc-macro-error",
+ "proc-macro2",
+ "quote",
+ "ryde_static_files",
+ "syn 1.0.109",
+]
+
+[[package]]
+name = "ryde_static_files"
+version = "0.2.0"
+dependencies = [
+ "ryde_static_files_macros",
+]
+
+[[package]]
+name = "ryde_static_files_macros"
+version = "0.2.0"
+dependencies = [
+ "proc-macro-error",
+ "proc-macro2",
+ "quote",
  "syn 1.0.109",
 ]
 
@@ -1027,23 +1044,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f95c4bae5aba7cd30bd506f7140026ade63cff5afd778af8854026f9606bf5d4"
 dependencies = [
  "log",
-]
-
-[[package]]
-name = "static_files"
-version = "0.2.0"
-dependencies = [
- "static_files_macros",
-]
-
-[[package]]
-name = "static_files_macros"
-version = "0.2.0"
-dependencies = [
- "proc-macro-error",
- "proc-macro2",
- "quote",
- "syn 1.0.109",
 ]
 
 [[package]]

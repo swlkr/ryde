@@ -322,7 +322,20 @@ pub fn styles(renderable: &impl Render) -> String {
     renderable
         .styles(&mut styles)
         .expect("Failed to style html");
-    styles.into_iter().collect::<Vec<_>>().join("")
+    let mut other_styles = styles
+        .iter()
+        .filter(|s| !s.starts_with("@media"))
+        .collect::<Vec<_>>();
+    let media_styles = styles
+        .iter()
+        .filter(|s| s.starts_with("@media"))
+        .collect::<Vec<_>>();
+    other_styles.extend(media_styles);
+    other_styles
+        .into_iter()
+        .map(|s| s.clone())
+        .collect::<Vec<_>>()
+        .join("")
 }
 
 macro_rules! impl_render_num {

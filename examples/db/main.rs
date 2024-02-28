@@ -38,11 +38,12 @@ async fn index() -> Result<Response> {
 async fn todos_create(Form(todo): Form<InsertTodo>) -> Result<Response> {
     let result = insert_todo(todo.content).await;
 
-    let res = if is_unique!(result)? {
-        redirect_to(Route::Index)
-    } else {
-        let todos = todos().await?;
-        render(index_view("todo already exists", todos))
+    let res = match is_unique!(result)? {
+        true => redirect_to(Route::Index),
+        false => {
+            let todos = todos().await?;
+            render(index_view("todo already exists", todos))
+        }
     };
 
     Ok(res)
@@ -56,11 +57,12 @@ async fn todos_edit(Path(id): Path<i64>) -> Result<Response> {
 async fn todos_update(Path(id): Path<i64>, Form(todo): Form<UpdateTodo>) -> Result<Response> {
     let result = update_todo(todo.content, id).await;
 
-    let res = if is_unique!(result)? {
-        redirect_to(Route::Index)
-    } else {
-        let todos = todos().await?;
-        render(index_view("todo already exists", todos))
+    let res = match is_unique!(result)? {
+        true => redirect_to(Route::Index),
+        false => {
+            let todos = todos().await?;
+            render(index_view("todo already exists", todos))
+        }
     };
 
     Ok(res)

@@ -21,7 +21,7 @@ ryde_css = { path = "crates/css", version = "0.1.0" }
 ryde_db = { path = "crates/db", version = "0.1.0" }
 ryde_html = { path = "crates/html", version = "0.2.0" }
 ryde_router = { path = "crates/router", version = "0.1.0" }
-ryde_static_files = { path = "crates/static_files", version = "0.2.0" }
+ryde_static_files = { path = "crates/static_files", version = "0.1.0" }
 
 [dependencies]
 axum = { version = "0.7.4", features = ["macros"] }

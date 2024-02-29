@@ -919,14 +919,14 @@ dependencies = [
 
 [[package]]
 name = "ryde_static_files"
-version = "0.2.0"
+version = "0.1.0"
 dependencies = [
  "ryde_static_files_macros",
 ]
 
 [[package]]
 name = "ryde_static_files_macros"
-version = "0.2.0"
+version = "0.1.0"
 dependencies = [
  "proc-macro-error",
  "proc-macro2",

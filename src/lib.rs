@@ -42,18 +42,9 @@ macro_rules! serve {
 }
 
 #[macro_export]
-macro_rules! embed_static_files {
-    ($expr:expr) => {
-        #[derive(static_files::StaticFiles)]
-        #[folder($expr)]
-        struct StaticFiles;
-    };
-}
-
-#[macro_export]
 macro_rules! render_static_files {
     () => {{
-        StaticFiles::render()
+        Assets::render()
     }};
 }
 
@@ -199,9 +190,13 @@ impl From<std::io::Error> for Error {
 
 #[macro_export]
 macro_rules! serve_static_files {
-    ($expr:expr) => {{
-        async fn serve_static_files(uri: axum::http::Uri) -> impl axum::response::IntoResponse {
-            match StaticFiles::get(uri.path()) {
+    ($expr:expr, $ident:ident) => {
+        #[derive(static_files::StaticFiles)]
+        #[folder($expr)]
+        pub struct Assets;
+
+        pub async fn files_handler(uri: axum::http::Uri) -> impl axum::response::IntoResponse {
+            match Assets::get(uri.path()) {
                 Some((content_type, bytes)) => (
                     axum::http::StatusCode::OK,
                     [(axum::http::header::CONTENT_TYPE, content_type)],
@@ -214,9 +209,7 @@ macro_rules! serve_static_files {
                 ),
             }
         }
-
-        serve_static_files($expr).await.into_response()
-    }};
+    };
 }
 
 #[cfg(test)]

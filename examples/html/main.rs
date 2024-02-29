@@ -1,6 +1,7 @@
 use ryde::*;
 
-route!((get, "/", index), (get, "/*files", static_files),);
+route!((get, "/", index), (get, "/*files", files_handler),);
+serve_static_files!("examples/html/static", files_handler);
 
 fn main() {
     serve!("::1:3000")
@@ -36,15 +37,9 @@ fn p(s: &'static str) -> Element {
     ryde::p(s).css(css)
 }
 
-async fn static_files(uri: Uri) -> Response {
-    serve_static_files!(uri)
-}
-
 fn render(element: Element) -> Response {
     document()
         .head(render_static_files!())
         .body(element)
         .render()
 }
-
-embed_static_files!("examples/html/static");

@@ -43,6 +43,8 @@ fn class_name(rule: &str) -> String {
         .replace(" ", "")
         .replace(":var(--", "-")
         .replace(":", "-")
+        .replace("(", "-")
+        .replace(",", "-")
         .trim_end_matches(')')
         .replace(":", r"\:")
         .to_string();

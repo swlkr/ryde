@@ -106,7 +106,7 @@ fn todo_form() -> Element {
 
 fn render(element: Element) -> Response {
     document()
-        .head(())
+        .head(render_static_files!())
         .body(
             div(element)
                 .css(css!(

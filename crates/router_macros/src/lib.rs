@@ -255,64 +255,6 @@ fn routes_macro(input: DeriveInput) -> Result<TokenStream2> {
         )
         .collect::<Vec<_>>();
 
-    let embed_attr = data
-        .variants
-        .iter()
-        .filter(|variant| {
-            variant
-                .attrs
-                .iter()
-                .find(|attr| attr.path.is_ident("embed"))
-                .is_some()
-        })
-        .last();
-    let embed_ident = match embed_attr {
-        Some(variant) => Some(&variant.ident),
-        None => None,
-    };
-    let folder_attr = data
-        .variants
-        .iter()
-        .filter_map(|variant| {
-            variant
-                .attrs
-                .iter()
-                .find(|attr| attr.path.is_ident("folder"))
-        })
-        .last();
-    let folder = match folder_attr {
-        Some(attr) => match attr.parse_args::<LitStr>() {
-            Ok(lit_str) => lit_str.value(),
-            Err(_) => "static".into(),
-        },
-        None => "static".into(),
-    };
-    let static_file_handler = if let Some(ident) = embed_ident {
-        let fn_name = Ident::new(&pascal_to_camel(&ident.to_string()), ident.span());
-        quote! {
-            async fn #fn_name(uri: axum::http::Uri) -> impl axum::response::IntoResponse {
-                match #ident::get(uri.path()) {
-                    Some((content_type, bytes)) => (
-                        axum::http::StatusCode::OK,
-                        [(axum::http::header::CONTENT_TYPE, content_type)],
-                        bytes,
-                    ),
-                    None => (
-                        axum::http::StatusCode::NOT_FOUND,
-                        [(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")],
-                        "not found".as_bytes(),
-                    ),
-                }
-            }
-
-            #[derive(static_files::StaticFiles)]
-            #[folder(#folder)]
-            struct #ident;
-        }
-    } else {
-        quote! {}
-    };
-
     Ok(quote! {
         impl #enum_name {
             fn url(&self) -> String {
@@ -328,9 +270,9 @@ fn routes_macro(input: DeriveInput) -> Result<TokenStream2> {
                 }
             }
 
-            fn router() -> ::axum::Router<#state_generic> {
-                use ::axum::routing::{get, post, patch, put, delete};
-                ::axum::Router::new()#(#axum_route)*
+            fn router() -> axum::Router<#state_generic> {
+                use axum::routing::{get, post, patch, put, delete};
+                axum::Router::new()#(#axum_route)*
             }
         }
 
@@ -339,8 +281,6 @@ fn routes_macro(input: DeriveInput) -> Result<TokenStream2> {
                 f.write_fmt(format_args!("{}", self.url()))
             }
         }
-
-        #static_file_handler
 
         use std::io::Write;
 
@@ -464,27 +404,12 @@ impl<'a> From<&'a Variant> for RouteVariant<'a> {
             .iter()
             .filter_map(
                 |attr| match (attr.path.get_ident(), attr.parse_args::<LitStr>().ok()) {
-                    (Some(ident), Some(path)) => {
-                        if ident.to_string() != "folder" {
-                            Some((ident.clone(), path))
-                        } else {
-                            None
-                        }
-                    }
-                    (Some(ident), None) => {
-                        // HACK: assume this is #[embed]
-                        Some((
-                            Ident::new("get", ident.span()),
-                            LitStr::new("/*file", ident.span()),
-                        ))
-                    }
+                    (Some(ident), Some(path)) => Some((ident.clone(), path)),
                     _ => None,
                 },
             )
             .last()
-            .expect(
-                "should be #[get], #[post], #[put], #[delete], #[state], #[embed] or #[folder]",
-            );
+            .expect("should be #[get], #[post], #[put], #[delete], #[state]");
         let fields = &value.fields;
 
         RouteVariant {

@@ -834,7 +834,7 @@ checksum = "7ffc183a10b4478d04cbbbfc96d0873219d962dd5accaff2ffbd4ceb7df837f4"
 
 [[package]]
 name = "ryde"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "axum 0.7.4",
  "axum-extra",
@@ -909,7 +909,7 @@ dependencies = [
 
 [[package]]
 name = "ryde_router_macros"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "proc-macro-error",
  "proc-macro2",

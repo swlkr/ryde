@@ -1,4 +1,5 @@
 extern crate self as ryde;
+pub use axum;
 pub use axum::extract::*;
 pub use axum::http;
 pub use axum::http::header::*;
@@ -13,6 +14,7 @@ pub use ryde_db::db;
 pub use ryde_db::rusqlite;
 pub use ryde_db::tokio_rusqlite;
 pub use ryde_html::{self as html, *};
+pub use ryde_router;
 pub use ryde_router::{route, router, Routes};
 pub use ryde_static_files::{self as static_files, StaticFiles};
 pub use serde::*;

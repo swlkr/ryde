@@ -6,7 +6,7 @@ license = "MIT"
 homepage = "https://github.com/swlkr/ryde"
 repository = "https://github.com/swlkr/ryde"
 keywords = ["ryde", "web", "ssr", "framework", "hypermedia", "library"]
-description = ""
+description = "a single person, single file web development library"
 
 [workspace]
 members = [

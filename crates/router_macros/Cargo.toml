@@ -3,7 +3,6 @@ name = "ryde_router_macros"
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
-readme = "README.md"
 homepage = "https://github.com/swlkr/ryde"
 repository = "https://github.com/swlkr/ryde"
 keywords = ["ryde", "router_macros"]
@@ -17,4 +16,3 @@ proc-macro2 = "1"
 quote = "1"
 syn = { version = "1", features = ["full"] }
 proc-macro-error = "1"
-ryde_static_files = { path = "../static_files" }

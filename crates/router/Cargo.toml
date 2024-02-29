@@ -2,14 +2,18 @@
 name = "ryde_router"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
+homepage = "https://github.com/swlkr/ryde"
+repository = "https://github.com/swlkr/ryde"
+keywords = ["ryde", "router", "routes"]
+description = "router crate for ryde"
 
 [dependencies]
 ryde_router_macros = { path = "../router_macros", version = "0.1.0" }
-axum-core = { version = "0.3" }
-ryde_html = { path = "../html" }
 
 [dev-dependencies]
 serde = { version = "1.0.193", features = ["serde_derive", "derive"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 tower = { version = "0.4.13" }
 axum = { version = "0.6" }
+ryde_html = { path = "../html", version = "0.2.0" }

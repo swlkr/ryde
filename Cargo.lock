@@ -900,7 +900,6 @@ name = "ryde_router"
 version = "0.1.0"
 dependencies = [
  "axum 0.6.20",
- "axum-core 0.3.4",
  "ryde_html",
  "ryde_router_macros",
  "serde",
@@ -915,7 +914,6 @@ dependencies = [
  "proc-macro-error",
  "proc-macro2",
  "quote",
- "ryde_static_files",
  "syn 1.0.109",
 ]
 

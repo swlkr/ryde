@@ -1,5 +1,5 @@
 pub use ryde_router_macros::{route, router, Routes};
-extern crate self as router;
+extern crate self as ryde_router;
 
 #[cfg(test)]
 mod tests {
@@ -9,7 +9,7 @@ mod tests {
     use axum::http::{Request, StatusCode};
     use axum::response::IntoResponse;
     use axum::Router;
-    use router::router;
+    use ryde_html as html;
     use serde::Deserialize;
     use tower::ServiceExt;
 

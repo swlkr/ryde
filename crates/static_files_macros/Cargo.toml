@@ -2,6 +2,11 @@
 name = "ryde_static_files_macros"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
+homepage = "https://github.com/swlkr/ryde"
+repository = "https://github.com/swlkr/ryde"
+keywords = ["ryde", "static files", "embed static files binary"]
+description = "static_files_macro crate for ryde"
 
 [lib]
 proc-macro = true

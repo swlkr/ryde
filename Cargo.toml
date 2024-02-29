@@ -2,6 +2,11 @@
 name = "ryde"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
+homepage = "https://github.com/swlkr/ryde"
+repository = "https://github.com/swlkr/ryde"
+keywords = ["ryde", "web", "ssr", "framework", "hypermedia", "library"]
+description = ""
 
 [workspace]
 members = [

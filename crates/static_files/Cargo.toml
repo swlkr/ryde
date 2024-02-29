@@ -2,6 +2,11 @@
 name = "ryde_static_files"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
+homepage = "https://github.com/swlkr/ryde"
+repository = "https://github.com/swlkr/ryde"
+keywords = ["ryde", "static files", "embed static files binary"]
+description = "static files crate for ryde"
 
 [dependencies]
 ryde_static_files_macros = { path = "../static_files_macros", version = "0.1.0" }

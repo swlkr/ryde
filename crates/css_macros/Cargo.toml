@@ -3,12 +3,10 @@ name = "ryde_css_macros"
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
-readme = "README.md"
 homepage = "https://github.com/swlkr/ryde"
 repository = "https://github.com/swlkr/ryde"
 keywords = ["ryde", "css_macros"]
 description = "Macros for the ryde_css crate"
-
 
 [lib]
 proc-macro = true

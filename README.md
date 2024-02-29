@@ -8,7 +8,6 @@ ryde is a single person, single file web development library for rust
 cargo new your-project
 cd your-project
 cargo add ryde
-cd your-project
 mkdir static
 ```
 

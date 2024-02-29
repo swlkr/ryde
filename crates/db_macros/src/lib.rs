@@ -86,6 +86,7 @@ fn db_macro(input: Punctuated<Expr, Token![,]>) -> Result<TokenStream2> {
                             if column_fields.is_empty() {
                                 quote!(
                                     #[derive(Default, Debug, Deserialize, Serialize, Clone)]
+                                    #[serde(crate = "crate::serde")]
                                     struct #struct_ident;
 
                                     async fn #ident() -> tokio_rusqlite::Result<#return_value> {
@@ -95,6 +96,7 @@ fn db_macro(input: Punctuated<Expr, Token![,]>) -> Result<TokenStream2> {
                             } else {
                                 quote!(
                                     #[derive(Default, Debug, Deserialize, Serialize, Clone)]
+                                    #[serde(crate = "crate::serde")]
                                     struct #struct_ident {
                                         #(#column_fields,)*
                                     }

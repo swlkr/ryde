@@ -34,8 +34,8 @@ async fn index() -> Response {
         .body(
             h1("ryde with rust")
                 .css(css!(
-                    "font-size: var(--font-size-2)",
-                    "line-height: var(--line-height-2)"
+                    "font-size: 1.5rem",
+                    "line-height: 2rem"
                 ))
         )
         .render()
@@ -50,6 +50,7 @@ serve_static_files!("static", files_handler);
 
 ```rust
 // src/main.rs
+use ryde::*;
 
 db!(
     "create table if not exists todos (
@@ -79,26 +80,26 @@ async fn todos_index() -> Result<Response> {
 }
 
 async fn todos_create(Form(todo): Form<InsertTodo>) -> Result<Response> {
-    let _todo = insert_todo(todo.content).await?
+    let _todo = insert_todo(todo.content).await?;
     Ok(redirect_to(Route::TodosIndex))
 }
 
 fn render_todos_index(todos: Vec<Todos>) -> Response {
     render(div((
         h1("todos").css(css!(
-            "font-size: var(--font-size-2)",
-            "line-height: var(--line-height-2)",
-            "color: var(--gray-9)",
-            "dark:color: var(--amber-5)",
+            "font-size: 1.5rem",
+            "line-height: 2rem",
         )),
-        ul(todos.iter().map(|todo| li((todo.content))).collect::<Vec<_>>()),
+        ul(todos.iter().map(|todo| li(todo.content.clone())).collect::<Vec<_>>()),
         todo_form()
-    )))
+    )).css(css!(
+        "color: rgb(3 7 18)",
+        "dark:color: rgb(245 158 11)")))
 }
 
 fn todo_form() -> Element {
     form((
-        input().type_("text").name("content").value(content),
+        input().type_("text").name("content"),
         input().type_("submit").name("save")
     ))
     .method("POST")
@@ -111,8 +112,8 @@ fn render(element: Element) -> Response {
         .body(
             div(element)
                 .css(css!(
-                    "background: var(--gray-1)",
-                    "dark:background: var(--gray-9)"
+                    "background: rgb(243 244 246)",
+                    "dark:background: rgb(3 7 18)"
                 ))
         )
         .render()

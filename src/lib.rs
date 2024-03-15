@@ -16,7 +16,7 @@ pub use ryde_db::rusqlite;
 pub use ryde_db::tokio_rusqlite;
 pub use ryde_html::{self as html, *};
 pub use ryde_router;
-pub use ryde_router::{route, router, Routes};
+pub use ryde_router::{params, route, router, Routes};
 pub use ryde_static_files::{self as static_files, StaticFiles};
 pub use serde;
 pub use serde::*;

@@ -3,7 +3,8 @@ use proc_macro2::{Span, TokenStream as TokenStream2};
 use quote::{quote, ToTokens};
 use syn::{
     parse::Parse, parse_macro_input, punctuated::Punctuated, Attribute, Data, DeriveInput, Expr,
-    Fields, FieldsNamed, FieldsUnnamed, Ident, ItemEnum, LitStr, Result, Token, Type, Variant,
+    Fields, FieldsNamed, FieldsUnnamed, Ident, ItemEnum, ItemStruct, LitStr, Result, Token, Type,
+    Variant,
 };
 
 #[proc_macro]
@@ -139,6 +140,26 @@ impl Parse for Args {
 
         Ok(Self { state })
     }
+}
+
+#[proc_macro_attribute]
+pub fn params(args: TokenStream, input: TokenStream) -> TokenStream {
+    let args = parse_macro_input!(args as Args);
+    let input = parse_macro_input!(input as ItemStruct);
+    match params_macro(args, input) {
+        Ok(s) => s.to_token_stream().into(),
+        Err(e) => e.to_compile_error().into(),
+    }
+}
+
+fn params_macro(_args: Args, item_enum: ItemStruct) -> Result<TokenStream2> {
+    let expanded = quote! {
+        #[derive(Default, Debug, Deserialize, Serialize, Clone)]
+        #[serde(crate = "crate::serde")]
+        #item_enum
+    };
+
+    Ok(expanded)
 }
 
 #[proc_macro_attribute]

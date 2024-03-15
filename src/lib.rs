@@ -200,6 +200,15 @@ impl From<std::io::Error> for Error {
 }
 
 #[macro_export]
+macro_rules! listen {
+    ($expr:expr) => {
+        fn main() {
+            serve!($expr);
+        }
+    };
+}
+
+#[macro_export]
 macro_rules! serve_static_files {
     ($expr:expr, $ident:ident) => {
         #[derive(static_files::StaticFiles)]

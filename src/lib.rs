@@ -149,18 +149,25 @@ pub enum Error {
     Database(String),
     UniqueConstraintFailed(String),
     Io(String),
+    NotFound,
+    InternalServer,
 }
 
 impl IntoResponse for Error {
     fn into_response(self) -> Response {
-        let body = match self {
-            Error::DatabaseConnectionClosed => "db connection closed".into(),
-            Error::DatabaseClose => "db closed".into(),
-            Error::Database(err) => err,
-            Error::UniqueConstraintFailed(columns) => columns,
-            Error::Io(s) => s,
+        let (status, body) = match self {
+            Error::DatabaseConnectionClosed => (500, "db connection closed".into()),
+            Error::DatabaseClose => (500, "db closed".into()),
+            Error::Database(err) => (500, err),
+            Error::UniqueConstraintFailed(columns) => (500, columns),
+            Error::Io(s) => (500, s),
+            Error::NotFound => (404, "not found".into()),
+            Error::InternalServer => (500, "internal server error".into()),
         };
-        Response::builder().status(500).body(body.into()).unwrap()
+        Response::builder()
+            .status(status)
+            .body(body.into())
+            .unwrap()
     }
 }
 

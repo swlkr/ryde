@@ -215,7 +215,7 @@ macro_rules! serve_static_files {
         #[folder($expr)]
         pub struct Assets;
 
-        pub async fn files_handler(uri: axum::http::Uri) -> impl axum::response::IntoResponse {
+        pub async fn $ident(uri: axum::http::Uri) -> impl axum::response::IntoResponse {
             match Assets::get(uri.path()) {
                 Some((content_type, bytes)) => (
                     axum::http::StatusCode::OK,

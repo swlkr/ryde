@@ -66,7 +66,8 @@ fn db_macro(input: Punctuated<Expr, Token![,]>) -> Result<TokenStream2> {
                         if let Some(ident) = path.path.get_ident() {
                             let is_execute = is_execute(&ast);
                             let columns = columns(&ast);
-                            let columns = reify_columns(&tables, &columns);
+                            let table_names = table_names(&ast);
+                            let columns = reify_columns(&tables, &table_names, &columns);
                             let inputs = columns.iter().filter_map(input_column).collect::<Vec<_>>();
                             let outputs = columns.iter().filter_map(output_column).collect::<Vec<_>>();
                             let mut columns = columns.iter().map(column_from_col).collect::<Vec<_>>();
@@ -173,6 +174,7 @@ fn connection(url: String) -> Connection {
 
 #[derive(Debug)]
 struct Table {
+    name: Option<String>,
     columns: Vec<Column>,
 }
 
@@ -191,8 +193,12 @@ impl From<&Col> for Column {
     }
 }
 
-fn reify_columns(tables: &Vec<Table>, columns: &Vec<Col>) -> Vec<Col> {
-    let schema_columns: HashSet<&Column> = tables.iter().flat_map(|table| &table.columns).collect();
+fn reify_columns(tables: &Vec<Table>, table_names: &Vec<String>, columns: &Vec<Col>) -> Vec<Col> {
+    let schema_columns: HashSet<&Column> = tables
+        .iter()
+        .filter(|tbl| table_names.contains(tbl.name.as_ref().unwrap_or(&String::default())))
+        .flat_map(|table| &table.columns)
+        .collect();
 
     if columns.len() == 1 && Column::from(columns.last().unwrap()).name == "*" {
         let col = columns.last().unwrap();
@@ -289,6 +295,61 @@ fn column_from_expr(expr: &sqlparser::ast::Expr) -> Column {
 enum Col {
     Input(Column),
     Output(Column),
+}
+
+fn table_names_from_relation(table_factor: &sqlparser::ast::TableFactor) -> Vec<String> {
+    match table_factor {
+        sqlparser::ast::TableFactor::Table { name, .. } => name
+            .0
+            .clone()
+            .into_iter()
+            .map(|ident| ident.value)
+            .collect(),
+        _ => todo!(),
+    }
+}
+
+fn table_names_from_query(query: &sqlparser::ast::Query) -> Vec<String> {
+    match &*query.body {
+        sqlparser::ast::SetExpr::Select(select) => {
+            let mut v = vec![];
+            let tables = select.from.iter().flat_map(|t| {
+                let mut v = vec![];
+                v.extend(table_names_from_relation(&t.relation));
+                v.extend(
+                    t.joins
+                        .iter()
+                        .flat_map(|j| table_names_from_relation(&j.relation))
+                        .collect::<Vec<_>>(),
+                );
+                v
+            });
+            v.extend(tables);
+            v
+        }
+        sqlparser::ast::SetExpr::Query(query) => todo!(),
+        _ => todo!(),
+    }
+}
+
+fn table_names(ast: &Vec<Statement>) -> Vec<String> {
+    ast.iter()
+        .flat_map(|stmt| match stmt {
+            Statement::Insert { table_name, .. } => vec![
+                table_name
+                    .0
+                    .clone()
+                    .into_iter()
+                    .last()
+                    .expect("insert requires table name")
+                    .value,
+            ],
+            Statement::Query(query) => table_names_from_query(query),
+            Statement::Update { .. } => todo!(),
+            Statement::Delete { .. } => todo!(),
+            _ => vec![],
+        })
+        .collect()
 }
 
 fn columns_from_query(query: &sqlparser::ast::Query) -> Vec<Col> {
@@ -460,7 +521,22 @@ fn table(ast: &Vec<Statement>) -> Table {
         })
         .collect();
 
-    Table { columns }
+    let name = ast
+        .iter()
+        .filter_map(|statement| match statement {
+            Statement::CreateTable { name, .. } => Some(
+                name.0
+                    .clone()
+                    .into_iter()
+                    .last()
+                    .expect("create table needs a table name")
+                    .value,
+            ),
+            _ => None,
+        })
+        .last();
+
+    Table { name, columns }
 }
 
 fn data_type_tokens(data_type: &DataType) -> TokenStream2 {

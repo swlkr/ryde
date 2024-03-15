@@ -210,6 +210,10 @@ macro_rules! listen {
 
 #[macro_export]
 macro_rules! serve_static_files {
+    ($expr:expr) => {
+        serve_static_files!($expr, files_handler);
+    };
+
     ($expr:expr, $ident:ident) => {
         #[derive(static_files::StaticFiles)]
         #[folder($expr)]

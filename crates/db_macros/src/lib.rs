@@ -192,7 +192,7 @@ impl From<&Col> for Column {
 }
 
 fn reify_columns(tables: &Vec<Table>, columns: &Vec<Col>) -> Vec<Col> {
-    let schema_columns: Vec<&Column> = tables.iter().flat_map(|table| &table.columns).collect();
+    let schema_columns: HashSet<&Column> = tables.iter().flat_map(|table| &table.columns).collect();
 
     if columns.len() == 1 && Column::from(columns.last().unwrap()).name == "*" {
         let col = columns.last().unwrap();

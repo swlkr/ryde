@@ -129,6 +129,10 @@ impl Element {
         self
     }
 
+    pub fn replace(self, value: impl Display) -> Self {
+        self.attr("x-replace", value)
+    }
+
     impl_attr!(id);
     impl_attr!(charset);
     impl_attr!(content);

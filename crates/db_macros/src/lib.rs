@@ -297,6 +297,16 @@ enum Col {
     Output(Column),
 }
 
+fn table_names_from_table(table_with_joins: &sqlparser::ast::TableWithJoins) -> Vec<String> {
+    let mut names = table_names_from_relation(&table_with_joins.relation);
+    let join_tables = table_with_joins
+        .joins
+        .iter()
+        .flat_map(|join| table_names_from_relation(&join.relation));
+    names.extend(join_tables);
+    names
+}
+
 fn table_names_from_relation(table_factor: &sqlparser::ast::TableFactor) -> Vec<String> {
     match table_factor {
         sqlparser::ast::TableFactor::Table { name, .. } => name
@@ -345,8 +355,11 @@ fn table_names(ast: &Vec<Statement>) -> Vec<String> {
                     .value,
             ],
             Statement::Query(query) => table_names_from_query(query),
-            Statement::Update { .. } => todo!(),
-            Statement::Delete { .. } => todo!(),
+            Statement::Update { table, .. } => table_names_from_table(table),
+            Statement::Delete { from, .. } => from
+                .iter()
+                .flat_map(|t| table_names_from_table(&t))
+                .collect::<Vec<_>>(),
             _ => vec![],
         })
         .collect()

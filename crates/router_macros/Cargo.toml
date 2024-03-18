@@ -1,6 +1,6 @@
 [package]
 name = "ryde_router_macros"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 license = "MIT"
 homepage = "https://github.com/swlkr/ryde"

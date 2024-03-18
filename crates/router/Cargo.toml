@@ -1,6 +1,6 @@
 [package]
 name = "ryde_router"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 license = "MIT"
 homepage = "https://github.com/swlkr/ryde"
@@ -9,7 +9,7 @@ keywords = ["ryde", "router", "routes"]
 description = "router crate for ryde"
 
 [dependencies]
-ryde_router_macros = { path = "../router_macros", version = "0.1.1" }
+ryde_router_macros = { path = "../router_macros", version = "0.1.2" }
 
 [dev-dependencies]
 serde = { version = "1.0.193", features = ["serde_derive", "derive"] }

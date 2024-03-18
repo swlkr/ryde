@@ -1,6 +1,6 @@
 [package]
 name = "ryde"
-version = "0.1.2"
+version = "0.1.3"
 edition = "2021"
 license = "MIT"
 homepage = "https://github.com/swlkr/ryde"
@@ -24,8 +24,8 @@ members = [
 [workspace.dependencies]
 ryde_css = { path = "crates/css", version = "0.1.0" }
 ryde_db = { path = "crates/db", version = "0.1.1" }
-ryde_html = { path = "crates/html", version = "0.2.0" }
-ryde_router = { path = "crates/router", version = "0.1.0" }
+ryde_html = { path = "crates/html", version = "0.2.1" }
+ryde_router = { path = "crates/router", version = "0.1.1" }
 ryde_static_files = { path = "crates/static_files", version = "0.1.0" }
 
 [dependencies]

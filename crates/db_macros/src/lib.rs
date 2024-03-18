@@ -327,7 +327,7 @@ fn table_names_from_query(query: &sqlparser::ast::Query) -> Vec<String> {
             v.extend(tables);
             v
         }
-        sqlparser::ast::SetExpr::Query(query) => todo!(),
+        sqlparser::ast::SetExpr::Query(_) => todo!(),
         _ => todo!(),
     }
 }

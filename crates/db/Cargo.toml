@@ -9,7 +9,7 @@ keywords = ["ryde", "db"]
 description = "db crate for ryde"
 
 [dependencies]
-ryde_db_macros = { path = "../db_macros", version = "0.1.2" }
+ryde_db_macros = { path = "../db_macros", version = "0.1.3" }
 rusqlite = "0.31.0"
 tokio-rusqlite = { git = "https://github.com/programatik29/tokio-rusqlite.git", version = "0.5.1" }
 serde = { version = "1.0.197", features = ["derive"] }

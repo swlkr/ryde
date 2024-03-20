@@ -141,6 +141,7 @@ impl Element {
     impl_attr!(rel);
     impl_attr!(target);
     impl_attr!(src);
+    impl_attr!(onerror);
     impl_attr!(integrity);
     impl_attr!(crossorigin);
     impl_attr!(role);

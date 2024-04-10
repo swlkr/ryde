@@ -242,6 +242,18 @@ impl Render for String {
     }
 }
 
+impl<T> Render for Option<T>
+where
+    T: Render,
+{
+    fn render(&self, buffer: &mut Vec<u8>) -> std::io::Result<()> {
+        match self {
+            Some(t) => t.render(buffer),
+            None => Ok(()),
+        }
+    }
+}
+
 impl Render for &String {
     fn render(&self, buffer: &mut Vec<u8>) -> std::io::Result<()> {
         buffer.write_fmt(format_args!("{}", escape(*self)))?;

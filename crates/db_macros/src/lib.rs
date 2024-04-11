@@ -1,148 +1,570 @@
-use std::collections::HashSet;
-
 use proc_macro::TokenStream;
-use proc_macro2::TokenStream as TokenStream2;
+use proc_macro2::{Ident, TokenStream as TokenStream2};
 use quote::{quote, ToTokens};
-use rusqlite::Connection;
+use sqlparser::ast::{
+    AlterTableOperation, Assignment, Query, Select, SelectItem, SetExpr, TableFactor,
+    TableWithJoins,
+};
 use sqlparser::parser::Parser;
 use sqlparser::{ast::Statement, dialect::SQLiteDialect};
+use std::collections::HashSet;
 use syn::{
-    parse_macro_input, punctuated::Punctuated, Expr, ExprLit, ExprTuple, Lit, Result, Token,
+    parse_macro_input, punctuated::Punctuated, Expr, ExprAssign, ExprLit, Lit, Result, Token,
 };
 
 #[proc_macro]
 pub fn db(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input with Punctuated::<Expr, Token![,]>::parse_terminated);
+    let input =
+        parse_macro_input!(input with Punctuated::<ExprAssign, Token![,]>::parse_terminated);
     match db_macro(input) {
         Ok(s) => s.to_token_stream().into(),
         Err(e) => e.to_compile_error().into(),
     }
 }
 
-fn db_macro(input: Punctuated<Expr, Token![,]>) -> Result<TokenStream2> {
-    let database_url = std::env::var("DATABASE_URL").unwrap_or("db.sqlite3".into());
-    let connection = connection(database_url);
-    let mut tables: Vec<Table> = vec![];
+fn db_macro(exprs: Punctuated<ExprAssign, Token![,]>) -> Result<TokenStream2> {
+    let input = to_input(exprs);
+    let output = to_output(input);
+    let source = to_tokens(output);
 
-    let source = input
-        .iter()
-        .map(|expr| {
-            match expr {
-                Expr::Lit(ExprLit { lit, .. }) => match lit {
-                    Lit::Str(lit_str) => {
-                        let sql = lit_str.value();
-                        if let Err(_) = connection.execute_batch(&sql) {
-                            panic!("Failed to execute {}", &sql);
-                        }
-                        let ast = match Parser::parse_sql(&SQLiteDialect {}, &sql) {
-                            Ok(ast) => ast,
-                            Err(err) => {
-                                // TODO: better error handling
-                                panic!("{}", err);
+    Ok(source)
+}
+
+fn to_input(exprs: Punctuated<ExprAssign, Token![,]>) -> Input {
+    let defs = exprs.iter().filter_map(to_def).collect::<Vec<_>>();
+    let columns = defs.iter().flat_map(columns).collect::<HashSet<Column>>();
+
+    Input { defs, columns }
+}
+
+fn to_output(input: Input) -> Output {
+    let stmts = input
+        .defs
+        .into_iter()
+        .filter_map(|def| to_stmt(&input.columns, def))
+        .collect();
+    Output { stmts }
+}
+
+fn to_tokens(output: Output) -> TokenStream2 {
+    let tokens: Vec<TokenStream2> = output.stmts.into_iter().map(stmt_tokens).collect();
+
+    quote! { #(#tokens)* }
+}
+
+fn stmt_tokens(output: Stmt) -> TokenStream2 {
+    match output {
+        Stmt::ExecuteBatch { ident, sql } => quote! {
+            pub async fn #ident() -> tokio_rusqlite::Result<()> {
+                connection()
+                    .await
+                    .call(move |conn| conn.execute_batch(#sql).map_err(|err| err.into()))
+                    .await?;
+
+                Ok(())
+            }
+        },
+        Stmt::Execute {
+            ident,
+            sql,
+            in_cols,
+        } => {
+            let fn_args: Vec<TokenStream2> = in_cols.iter().map(fn_tokens).collect();
+            let param_fields: Vec<TokenStream2> = in_cols.iter().map(param_tokens).collect();
+
+            quote! {
+                pub async fn #ident(#(#fn_args,)*) -> tokio_rusqlite::Result<usize> {
+                    connection()
+                        .await
+                        .call(move |conn| {
+                            let params = tokio_rusqlite::params![#(#param_fields,)*];
+                            conn.execute(#sql, params).map_err(|err| err.into())
+                        })
+                        .await
+                }
+            }
+        }
+        Stmt::AggQuery {
+            ident,
+            sql,
+            in_cols,
+        } => {
+            let fn_args: Vec<TokenStream2> = in_cols.iter().map(fn_tokens).collect();
+            let param_fields: Vec<TokenStream2> = in_cols.iter().map(param_tokens).collect();
+
+            quote! {
+                 pub async fn #ident(#(#fn_args,)*) -> tokio_rusqlite::Result<i64> {
+                    let result = connection()
+                        .await
+                        .call(move |conn| {
+                            let mut stmt = conn.prepare(#sql)?;
+                            let params = tokio_rusqlite::params![#(#param_fields,)*];
+                            let rows = stmt.query_map(params, |row| row.get(0))?
+                                .collect::<rusqlite::Result<Vec<_>>>();
+
+                            match rows {
+                                Ok(rows) => Ok(rows.last().cloned().expect("count(*) expected")),
+                                Err(err) => Err(err.into()),
                             }
-                        };
-                        tables.push(table(&ast));
-                        quote!()
-                    }
-                    _ => todo!(),
-                },
-                Expr::Tuple(ExprTuple { elems, .. }) => {
-                    let Some(Expr::Lit(ExprLit { lit, .. })) = elems.last() else {
-                        return quote!();
-                    };
-                    let Lit::Str(lit_str) = lit else {
-                        return quote!();
-                    };
-                    let sql = lit_str.value();
-                    let ast = match Parser::parse_sql(&SQLiteDialect {}, &sql) {
-                        Ok(ast) => ast,
-                        Err(err) => {
-                            // TODO: better error handling
-                            panic!("{}", err);
+                        })
+                        .await?;
+
+
+                    Ok(result)
+                }
+            }
+        }
+        Stmt::Query {
+            ident,
+            sql,
+            in_cols,
+            out_cols,
+            ret,
+        } => {
+            let struct_ident = struct_ident(&ident);
+            let struct_fields: Vec<TokenStream2> = out_cols.iter().map(column_tokens).collect();
+            let instance_fields: Vec<TokenStream2> = out_cols.iter().map(row_tokens).collect();
+            let fn_args: Vec<TokenStream2> = in_cols.iter().map(fn_tokens).collect();
+            let param_fields: Vec<TokenStream2> = in_cols.iter().map(param_tokens).collect();
+            let (return_statement, return_type) = match ret {
+                QueryReturn::Row => (
+                    quote! {
+                        match rows {
+                            Ok(rows) => Ok(rows.last().cloned()),
+                            Err(err) => Err(err.into()),
                         }
-                    };
+                    },
+                    quote! { Option<#struct_ident> },
+                ),
+                QueryReturn::Rows => (
+                    quote! {
+                        rows.map_err(|err| err.into())
+                    },
+                    quote! { Vec<#struct_ident> },
+                ),
+            };
 
-                    if let Some(Expr::Path(path)) = elems.first() {
-                        if let Some(ident) = path.path.get_ident() {
-                            let is_execute = is_execute(&ast);
-                            let columns = columns(&ast);
-                            let table_names = table_names(&ast);
-                            let columns = reify_columns(&tables, &table_names, &columns);
-                            let inputs = columns.iter().filter_map(input_column).collect::<Vec<_>>();
-                            let outputs = columns.iter().filter_map(output_column).collect::<Vec<_>>();
-                            let mut columns = columns.iter().map(column_from_col).collect::<Vec<_>>();
-                            let columns = unique_columns(&mut columns);
-                            let column_fields =
-                                columns.iter().map(|column: &&Column| column_tokens(*column)).collect::<Vec<_>>();
-                            let param_fields = inputs.iter().map(|column| param_tokens(*column)).collect::<Vec<_>>();
-                            let row_fields = outputs.iter().map(|column: &&Column| row_tokens(*column)).collect::<Vec<_>>();
-                            let fn_args = inputs.iter().map(|column: &&Column| fn_tokens(*column)).collect::<Vec<_>>();
-                            let struct_fields_tokens= inputs.iter().map(|column: &&Column| struct_fields_tokens(*column)).collect::<Vec<_>>();
-                            let struct_ident = syn::Ident::new(&snake_to_pascal(ident.to_string()), ident.span());
-                            let has_limit = limit_one(&ast);
-                            let (query_fn, return_value) = match has_limit {
-                                true => (quote! { query_one }, quote! { Option<#struct_ident> }),
-                                false => (quote! { query }, quote! { Vec<#struct_ident> })
-                            };
-                            if column_fields.is_empty() {
-                                quote!(
-                                    #[derive(Default, Debug, Deserialize, Serialize, Clone)]
-                                    #[serde(crate = "crate::serde")]
-                                    struct #struct_ident;
+            quote! {
+                #[derive(Default, Debug, Deserialize, Serialize, Clone)]
+                #[serde(crate = "crate::serde")]
+                pub struct #struct_ident {
+                    #(#struct_fields,)*
+                }
 
-                                    async fn #ident() -> tokio_rusqlite::Result<#return_value> {
-                                        ryde_db::#query_fn(#struct_ident {}).await
-                                    }
-                                )
-                            } else {
-                                quote!(
-                                    #[derive(Default, Debug, Deserialize, Serialize, Clone)]
-                                    #[serde(crate = "crate::serde")]
-                                    struct #struct_ident {
-                                        #(#column_fields,)*
-                                    }
-
-                                    impl ryde_db::Query for #struct_ident {
-                                        fn sql() -> &'static str {
-                                            #sql
-                                        }
-
-                                        fn is_execute() -> bool {
-                                            #is_execute
-                                        }
-
-                                        fn params(&self) -> Vec<tokio_rusqlite::types::Value> {
-                                            vec![#(#param_fields,)*]
-                                        }
-
-                                        fn new(row: &tokio_rusqlite::Row<'_>) -> rusqlite::Result<Self> {
-                                            Ok(Self { #(#row_fields,)* ..Default::default() })
-                                        }
-                                    }
-
-                                    async fn #ident(#(#fn_args,)*) -> tokio_rusqlite::Result<#return_value> {
-                                        ryde_db::#query_fn(#struct_ident {
-                                            #(#struct_fields_tokens,)*
-                                            ..Default::default()
-                                        }).await
-                                    }
-                                )
-                            }
-                        } else {
-                            quote!()
-                        }
-                    } else {
-                        quote!()
+                impl #struct_ident {
+                    pub fn new(row: &tokio_rusqlite::Row<'_>) -> rusqlite::Result<Self> {
+                        Ok(Self { #(#instance_fields,)* ..Default::default() })
                     }
                 }
-                _ => todo!(),
-            }
-        })
-        .collect::<Vec<_>>();
 
-    Ok(quote! {
-        #(#source)*
+                 pub async fn #ident(#(#fn_args,)*) -> tokio_rusqlite::Result<#return_type> {
+                    connection()
+                        .await
+                        .call(move |conn| {
+                            let mut stmt = conn.prepare(#sql)?;
+                            let params = tokio_rusqlite::params![#(#param_fields,)*];
+                            let rows = stmt
+                                .query_map(params, |row| #struct_ident::new(row))?
+                                .collect::<rusqlite::Result<Vec<#struct_ident>>>();
+                            #return_statement
+                        })
+                        .await
+                }
+            }
+        }
+    }
+}
+
+#[derive(Debug)]
+enum QueryReturn {
+    Row,
+    Rows,
+}
+
+fn to_stmt(
+    db_columns: &HashSet<Column>,
+    Def {
+        statements,
+        ident,
+        sql,
+    }: Def,
+) -> Option<Stmt> {
+    // last one is the only one that returns anything?
+    match statements.last() {
+        Some(stmt) => match stmt {
+            Statement::Insert {
+                table_name,
+                columns,
+                returning,
+                source,
+                ..
+            } => insert_stmt(
+                db_columns,
+                ident,
+                sql,
+                table_name.to_string(),
+                columns,
+                returning,
+                source,
+            ),
+            Statement::Update {
+                table,
+                assignments,
+                from,
+                selection,
+                returning,
+            } => update_stmt(
+                db_columns,
+                ident,
+                sql,
+                table,
+                assignments,
+                from,
+                selection,
+                returning,
+            ),
+            Statement::Delete {
+                from,
+                selection,
+                returning,
+                ..
+            } => delete_stmt(db_columns, ident, sql, from, selection, returning),
+            Statement::Query(q) => {
+                let Query { body, limit, .. } = &**q;
+                query_stmt(db_columns, ident, sql, body, limit.as_ref())
+            }
+            _ => Some(Stmt::ExecuteBatch { ident, sql }),
+        },
+        _ => None,
+    }
+}
+
+fn query_stmt(
+    db_cols: &HashSet<Column>,
+    ident: Ident,
+    sql: String,
+    body: &SetExpr,
+    limit: Option<&sqlparser::ast::Expr>,
+) -> Option<Stmt> {
+    let SetExpr::Select(select) = body else {
+        return None;
+    };
+    let Select {
+        projection,
+        selection,
+        ..
+    } = &**select;
+    let in_cols = match selection {
+        Some(expr) => columns_from_expr(&db_cols, expr),
+        None => vec![],
+    };
+    let out_cols = projection
+        .iter()
+        .flat_map(|si| columns_from_select_item(&db_cols, si))
+        .collect::<Vec<_>>();
+    let ret = match limit {
+        Some(sqlparser::ast::Expr::Value(sqlparser::ast::Value::Number(number, _))) => {
+            match number.as_str() {
+                "1" => QueryReturn::Row,
+                _ => QueryReturn::Rows,
+            }
+        }
+        _ => QueryReturn::Rows,
+    };
+    // one column and it's count(*)
+    let ret = match out_cols[..] {
+        [Column {
+            ref column_type, ..
+        }] => match column_type {
+            ColumnType::Aggregate => {
+                return Some(Stmt::AggQuery {
+                    ident,
+                    sql,
+                    in_cols,
+                })
+            }
+            ColumnType::Column => ret,
+        },
+        _ => ret,
+    };
+
+    Some(Stmt::Query {
+        ident,
+        sql,
+        in_cols,
+        out_cols,
+        ret,
     })
+}
+
+fn update_stmt(
+    db_cols: &HashSet<Column>,
+    ident: Ident,
+    sql: String,
+    table: &TableWithJoins,
+    assignments: &[Assignment],
+    _from: &Option<TableWithJoins>,
+    selection: &Option<sqlparser::ast::Expr>,
+    returning: &Option<Vec<SelectItem>>,
+) -> Option<Stmt> {
+    let table_names = table_names(table);
+    let table_name = table_names.get(0);
+    let table_name = match table_name {
+        Some(t) => t,
+        None => panic!("update needs a table name in {}", &ident),
+    };
+
+    let table_columns = db_cols
+        .iter()
+        .filter(|c| &c.table_name == table_name)
+        .map(|c| c.clone())
+        .collect::<HashSet<_>>();
+    let out_cols = match returning {
+        Some(si) => si
+            .iter()
+            .flat_map(|si| columns_from_select_item(&table_columns, si))
+            .collect::<Vec<_>>(),
+        None => vec![],
+    };
+    let mut in_cols = assignments
+        .iter()
+        .filter_map(|a| match a.value {
+            sqlparser::ast::Expr::Value(sqlparser::ast::Value::Placeholder(_)) => Some(&a.id),
+            _ => None,
+        })
+        .flat_map(|c| columns_from_idents(&table_columns, c))
+        .collect::<Vec<_>>();
+    in_cols.extend(match selection {
+        Some(expr) => columns_from_expr(&table_columns, expr),
+        None => vec![],
+    });
+
+    match returning {
+        Some(_) => Some(Stmt::Query {
+            ident,
+            sql,
+            in_cols,
+            out_cols,
+            ret: QueryReturn::Row,
+        }),
+        None => Some(Stmt::Execute {
+            ident,
+            sql,
+            in_cols,
+        }),
+    }
+}
+
+fn to_def(ExprAssign { left, right, .. }: &ExprAssign) -> Option<Def> {
+    let Expr::Path(syn::ExprPath { path, .. }) = &**left else {
+        return None;
+    };
+    let Some(ident) = path.get_ident() else {
+        return None;
+    };
+    let Expr::Lit(ExprLit {
+        lit: Lit::Str(lit_str),
+        ..
+    }) = &**right
+    else {
+        return None;
+    };
+    let sql = lit_str.value();
+    let statements = match Parser::parse_sql(&SQLiteDialect {}, &sql) {
+        Ok(ast) => ast,
+        Err(err) => {
+            // TODO: better error handling
+            panic!("{}", err);
+        }
+    };
+
+    Some(Def {
+        ident: ident.clone(),
+        sql,
+        statements,
+    })
+}
+
+fn columns(Def { statements, .. }: &Def) -> HashSet<Column> {
+    statements
+        .iter()
+        .filter_map(|statement| match statement {
+            Statement::CreateTable { name, columns, .. } => {
+                let name = name.to_string();
+                let columns = columns
+                    .iter()
+                    .map(|c| column(Some(&name), c))
+                    .collect::<Vec<_>>();
+
+                Some(columns)
+            }
+            Statement::AlterTable {
+                name, operations, ..
+            } => {
+                let name = name.to_string();
+                let columns = operations
+                    .iter()
+                    .filter_map(|op| match op {
+                        AlterTableOperation::AddColumn { column_def, .. } => {
+                            Some(column(Some(&name), column_def))
+                        }
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>();
+
+                Some(columns)
+            }
+            _ => None,
+        })
+        .flat_map(|c| c)
+        .collect()
+}
+
+fn table_names(table: &TableWithJoins) -> Vec<String> {
+    let mut results = table_names_from(&table.relation);
+    results.extend(
+        table
+            .joins
+            .iter()
+            .flat_map(|j| table_names_from(&j.relation)),
+    );
+
+    results
+}
+
+fn table_names_from(relation: &TableFactor) -> Vec<String> {
+    match relation {
+        sqlparser::ast::TableFactor::Table { name, .. } => vec![name.to_string()],
+        sqlparser::ast::TableFactor::NestedJoin {
+            table_with_joins, ..
+        } => table_names(&table_with_joins),
+        _ => vec![],
+    }
+}
+
+fn struct_ident(ident: &Ident) -> Ident {
+    syn::Ident::new(&snake_to_pascal(ident.to_string()), ident.span())
+}
+
+fn insert_stmt(
+    db_cols: &HashSet<Column>,
+    ident: Ident,
+    sql: String,
+    table_name: String,
+    columns: &Vec<sqlparser::ast::Ident>,
+    returning: &Option<Vec<SelectItem>>,
+    source: &Option<Box<Query>>,
+) -> Option<Stmt> {
+    // nice little compile time validation
+    // check insert into count matches placeholder count
+    let placeholder_count = match source.as_deref() {
+        Some(Query { body, .. }) => match &**body {
+            SetExpr::Values(value) => value
+                .rows
+                .iter()
+                .flatten()
+                .filter(|expr| match expr {
+                    sqlparser::ast::Expr::Value(sqlparser::ast::Value::Placeholder(_)) => true,
+                    _ => false,
+                })
+                .count(),
+            _ => 0,
+        },
+        None => 0,
+    };
+    let input_col_names = columns.iter().map(|c| c.to_string()).collect::<Vec<_>>();
+    if placeholder_count != input_col_names.len() {
+        panic!("{} placeholder count doesn't match insert into", ident);
+    }
+
+    let table_columns = db_cols
+        .iter()
+        .filter(|c| c.table_name == table_name)
+        .map(|c| c.clone())
+        .collect::<HashSet<_>>();
+
+    // check insert into matches table columns
+    let table_column_names = table_columns
+        .iter()
+        .map(|c| c.name.clone())
+        .collect::<Vec<_>>();
+    for n in input_col_names {
+        if !table_column_names.contains(&n) {
+            panic!("column {} does not exist in table {}", n, table_name);
+        }
+    }
+
+    let in_cols: Vec<Column> = columns_from_idents(&table_columns, columns);
+
+    match returning {
+        Some(_) => {
+            let out_cols: Vec<Column> = match returning {
+                Some(si) => si
+                    .iter()
+                    .flat_map(|si| columns_from_select_item(&table_columns, si))
+                    .collect(),
+                None => vec![],
+            };
+            Some(Stmt::Query {
+                ident,
+                sql,
+                in_cols,
+                out_cols,
+                ret: QueryReturn::Row,
+            })
+        }
+        None => Some(Stmt::Execute {
+            ident,
+            sql,
+            in_cols,
+        }),
+    }
+}
+
+fn delete_stmt(
+    db_cols: &HashSet<Column>,
+    ident: Ident,
+    sql: String,
+    from: &Vec<TableWithJoins>,
+    selection: &Option<sqlparser::ast::Expr>,
+    returning: &Option<Vec<SelectItem>>,
+) -> Option<Stmt> {
+    let table_names = from.iter().flat_map(|f| table_names(f)).collect::<Vec<_>>();
+    let table_name = match table_names.first() {
+        Some(t) => t.to_string(),
+        None => panic!("delete expects table name {}", &ident),
+    };
+    let table_columns = db_cols
+        .iter()
+        .filter(|c| c.table_name == table_name)
+        .map(|c| c.clone())
+        .collect::<HashSet<_>>();
+    let in_cols = match selection {
+        Some(expr) => columns_from_expr(&table_columns, expr),
+        None => vec![],
+    };
+    let out_cols = match returning {
+        Some(si) => si
+            .iter()
+            .flat_map(|si| columns_from_select_item(&table_columns, si))
+            .collect::<Vec<_>>(),
+        None => vec![],
+    };
+
+    match returning {
+        Some(_) => Some(Stmt::Query {
+            ident,
+            sql,
+            in_cols,
+            out_cols,
+            ret: QueryReturn::Row,
+        }),
+        _ => Some(Stmt::Execute {
+            ident,
+            sql,
+            in_cols,
+        }),
+    }
 }
 
 fn snake_to_pascal(input: String) -> String {
@@ -156,322 +578,127 @@ fn snake_to_pascal(input: String) -> String {
         .collect::<String>()
 }
 
-fn unique_columns<'a>(columns: &'a mut Vec<&'a Column>) -> &'a Vec<&'a Column> {
-    let mut seen = HashSet::new();
-    columns.retain(|item| seen.insert(*item));
-    columns
-}
-
-fn connection(url: String) -> Connection {
-    let connection = Connection::open(url).expect("Failed to connect to db");
-    connection
-        .execute_batch(
-            "PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;",
-        )
-        .expect("Failed to connect to db");
-    connection
-}
-
-#[derive(Debug)]
-struct Table {
-    name: Option<String>,
-    columns: Vec<Column>,
+#[derive(Default, Clone, Debug, PartialEq, Eq, Hash)]
+enum ColumnType {
+    Aggregate,
+    #[default]
+    Column,
 }
 
 #[derive(Clone, Default, Debug, PartialEq, Eq, Hash)]
 struct Column {
     name: String,
+    full_name: String,
+    table_name: String,
+    column_type: ColumnType,
     data_type: DataType,
 }
 
-impl From<&Col> for Column {
-    fn from(value: &Col) -> Self {
-        match value {
-            Col::Input(c) => c.clone(),
-            Col::Output(c) => c.clone(),
-        }
-    }
-}
-
-fn reify_columns(tables: &Vec<Table>, table_names: &Vec<String>, columns: &Vec<Col>) -> Vec<Col> {
-    let schema_columns: HashSet<&Column> = tables
+fn columns_from_idents(
+    table_columns: &HashSet<Column>,
+    column_names: &Vec<sqlparser::ast::Ident>,
+) -> Vec<Column> {
+    column_names
         .iter()
-        .filter(|tbl| table_names.contains(tbl.name.as_ref().unwrap_or(&String::default())))
-        .flat_map(|table| &table.columns)
-        .collect();
-
-    if columns.len() == 1 && Column::from(columns.last().unwrap()).name == "*" {
-        let col = columns.last().unwrap();
-        match col {
-            Col::Input(_) => schema_columns
-                .into_iter()
-                .map(|sc| Col::Input(sc.clone()))
-                .collect(),
-            Col::Output(_) => schema_columns
-                .into_iter()
-                .map(|sc| Col::Output(sc.clone()))
-                .collect(),
-        }
-    } else {
-        columns
-            .iter()
-            .flat_map(|c| {
-                let col = match c {
-                    Col::Input(col) => col,
-                    Col::Output(col) => col,
-                };
-
-                let data_type = match schema_columns.iter().find(|c1| c1.name == col.name) {
-                    Some(column) => column.data_type.clone(),
-                    None => DataType::Blob,
-                };
-
-                if col.name == "*" {
-                    schema_columns
-                        .iter()
-                        .map(|col| {
-                            let col = *col;
-                            match c {
-                                Col::Input(_) => Col::Input(col.clone()),
-                                Col::Output(_) => Col::Output(col.clone()),
-                            }
-                        })
-                        .collect()
-                } else {
-                    let output = Column {
-                        name: col.name.clone(),
-                        data_type,
-                    };
-
-                    vec![match c {
-                        Col::Input(_) => Col::Input(output),
-                        Col::Output(_) => Col::Output(output),
-                    }]
-                }
-            })
-            .collect()
-    }
-}
-
-fn columns_from_idents(columns: &Vec<sqlparser::ast::Ident>) -> Vec<Column> {
-    columns
-        .iter()
-        .map(|c| Column {
-            name: c.value.clone(),
-            ..Default::default()
-        })
-        .collect()
-}
-
-fn column_from_select_item(select_item: &sqlparser::ast::SelectItem) -> Column {
-    match select_item {
-        sqlparser::ast::SelectItem::UnnamedExpr(expr) => column_from_expr(expr),
-        sqlparser::ast::SelectItem::ExprWithAlias { .. } => todo!(),
-        sqlparser::ast::SelectItem::QualifiedWildcard(_, _)
-        | sqlparser::ast::SelectItem::Wildcard(_) => Column {
-            name: "*".into(),
-            ..Default::default()
-        },
-    }
-}
-
-fn column_from_expr(expr: &sqlparser::ast::Expr) -> Column {
-    match expr {
-        sqlparser::ast::Expr::Identifier(ident) => Column {
-            name: ident.value.clone(),
-            ..Default::default()
-        },
-        sqlparser::ast::Expr::CompoundIdentifier(_) => todo!(),
-        sqlparser::ast::Expr::Wildcard | sqlparser::ast::Expr::QualifiedWildcard(_) => Column {
-            name: "*".into(),
-            ..Default::default()
-        },
-        sqlparser::ast::Expr::BinaryOp { left, .. } => column_from_expr(left),
-        _ => todo!(),
-    }
-}
-
-#[derive(Debug)]
-enum Col {
-    Input(Column),
-    Output(Column),
-}
-
-fn table_names_from_table(table_with_joins: &sqlparser::ast::TableWithJoins) -> Vec<String> {
-    let mut names = table_names_from_relation(&table_with_joins.relation);
-    let join_tables = table_with_joins
-        .joins
-        .iter()
-        .flat_map(|join| table_names_from_relation(&join.relation));
-    names.extend(join_tables);
-    names
-}
-
-fn table_names_from_relation(table_factor: &sqlparser::ast::TableFactor) -> Vec<String> {
-    match table_factor {
-        sqlparser::ast::TableFactor::Table { name, .. } => name
-            .0
-            .clone()
-            .into_iter()
-            .map(|ident| ident.value)
-            .collect(),
-        _ => todo!(),
-    }
-}
-
-fn table_names_from_query(query: &sqlparser::ast::Query) -> Vec<String> {
-    match &*query.body {
-        sqlparser::ast::SetExpr::Select(select) => {
-            let mut v = vec![];
-            let tables = select.from.iter().flat_map(|t| {
-                let mut v = vec![];
-                v.extend(table_names_from_relation(&t.relation));
-                v.extend(
-                    t.joins
-                        .iter()
-                        .flat_map(|j| table_names_from_relation(&j.relation))
-                        .collect::<Vec<_>>(),
-                );
-                v
-            });
-            v.extend(tables);
-            v
-        }
-        sqlparser::ast::SetExpr::Query(_) => todo!(),
-        _ => todo!(),
-    }
-}
-
-fn table_names(ast: &Vec<Statement>) -> Vec<String> {
-    ast.iter()
-        .flat_map(|stmt| match stmt {
-            Statement::Insert { table_name, .. } => vec![
-                table_name
-                    .0
-                    .clone()
-                    .into_iter()
-                    .last()
-                    .expect("insert requires table name")
-                    .value,
-            ],
-            Statement::Query(query) => table_names_from_query(query),
-            Statement::Update { table, .. } => table_names_from_table(table),
-            Statement::Delete { from, .. } => from
+        .filter_map(|ident| {
+            table_columns
                 .iter()
-                .flat_map(|t| table_names_from_table(&t))
-                .collect::<Vec<_>>(),
-            _ => vec![],
-        })
-        .collect()
-}
-
-fn columns_from_query(query: &sqlparser::ast::Query) -> Vec<Col> {
-    match &*query.body {
-        sqlparser::ast::SetExpr::Select(select) => {
-            let mut v = select
-                .projection
-                .iter()
-                .map(column_from_select_item)
-                .map(|c| Col::Output(c))
-                .collect::<Vec<_>>();
-            if let Some(ref expr) = select.selection {
-                v.push(Col::Input(column_from_expr(&expr)));
-            }
-            v
-        }
-        sqlparser::ast::SetExpr::Query(query) => columns_from_query(query),
-        sqlparser::ast::SetExpr::SetOperation { .. } => todo!(),
-        sqlparser::ast::SetExpr::Values(_) => todo!(),
-        sqlparser::ast::SetExpr::Insert(_) => todo!(),
-        sqlparser::ast::SetExpr::Update(_) => unreachable!(),
-        sqlparser::ast::SetExpr::Table(_) => todo!(),
-    }
-}
-
-fn columns(ast: &Vec<Statement>) -> Vec<Col> {
-    ast.iter()
-        .flat_map(|statement| match statement {
-            Statement::Insert {
-                columns, returning, ..
-            } => {
-                let mut cols = if let Some(returning) = returning {
-                    returning
-                        .iter()
-                        .map(|si| column_from_select_item(si))
-                        .map(|c| Col::Output(c))
-                        .collect()
-                } else {
-                    vec![]
-                };
-                cols.extend(
-                    columns_from_idents(columns)
-                        .into_iter()
-                        .map(|c| Col::Input(c)),
-                );
-                cols
-            }
-            Statement::Query(query) => columns_from_query(&query),
-            Statement::Update {
-                assignments,
-                selection,
-                returning,
-                ..
-            } => {
-                let mut cols = assignments
-                    .iter()
-                    .map(|a| {
-                        let name = if let Some(id) = a.id.last() {
-                            id.to_string()
-                        } else {
-                            "".into()
-                        };
-                        Col::Input(Column {
-                            name,
-                            ..Default::default()
-                        })
-                    })
-                    .collect::<Vec<Col>>();
-
-                if let Some(selection) = selection {
-                    cols.push(Col::Input(column_from_expr(selection)));
-                }
-
-                if let Some(returning) = returning {
-                    cols.extend(
-                        returning
-                            .iter()
-                            .map(|si| column_from_select_item(si))
-                            .map(|c| Col::Output(c)),
-                    );
-                }
-
-                cols
-            }
-            Statement::Delete {
-                selection,
-                returning,
-                ..
-            } => {
-                let mut cols = if let Some(selection) = selection {
-                    vec![Col::Input(column_from_expr(selection))]
-                } else {
-                    vec![]
-                };
-
-                if let Some(returning) = returning {
-                    cols.extend(
-                        returning
-                            .iter()
-                            .map(|si| column_from_select_item(si))
-                            .map(|c| Col::Output(c)),
-                    );
-                }
-
-                cols
-            }
-            _ => vec![],
+                .find(|c| c.name == ident.value)
+                .cloned()
         })
         .collect::<Vec<_>>()
+}
+
+fn columns_from_select_item(
+    table_columns: &HashSet<Column>,
+    select_item: &sqlparser::ast::SelectItem,
+) -> HashSet<Column> {
+    match select_item {
+        sqlparser::ast::SelectItem::UnnamedExpr(expr) => columns_from_expr(&table_columns, expr)
+            .into_iter()
+            .collect::<HashSet<_>>(),
+        sqlparser::ast::SelectItem::ExprWithAlias { .. } => todo!(),
+        sqlparser::ast::SelectItem::QualifiedWildcard(obj_name, _) => table_columns
+            .iter()
+            .filter(|c| c.table_name == obj_name.to_string())
+            .map(|c| c.clone())
+            .collect::<HashSet<_>>(),
+        sqlparser::ast::SelectItem::Wildcard(_) => panic!("unqualified * not supported yet"),
+    }
+}
+
+fn columns_from_expr(table_columns: &HashSet<Column>, expr: &sqlparser::ast::Expr) -> Vec<Column> {
+    match expr {
+        sqlparser::ast::Expr::Identifier(ident) => {
+            match table_columns.iter().find(|c| c.name == ident.to_string()) {
+                Some(c) => vec![c.clone()],
+                None => panic!("column {} does not exist", ident.to_string()),
+            }
+        }
+        sqlparser::ast::Expr::CompoundIdentifier(idents) => {
+            let name = idents
+                .into_iter()
+                .map(|ident| ident.value.clone())
+                .collect::<Vec<_>>()
+                .join(".");
+            match table_columns.iter().find(|c| c.full_name == name) {
+                Some(c) => vec![c.clone()],
+                None => vec![],
+            }
+        }
+        sqlparser::ast::Expr::Wildcard => {
+            panic!("unqualified * not supported yet");
+            // table_columns.iter().map(|c| c.clone()).collect::<Vec<_>>()
+        }
+        sqlparser::ast::Expr::QualifiedWildcard(obj_name) => table_columns
+            .iter()
+            .filter(|c| c.table_name == obj_name.to_string())
+            .map(|c| c.clone())
+            .collect::<Vec<_>>(),
+        sqlparser::ast::Expr::BinaryOp { left, right, .. } => vec![
+            columns_from_expr(&table_columns, left),
+            columns_from_expr(&table_columns, right),
+        ]
+        .into_iter()
+        .flat_map(|c| c)
+        .collect::<Vec<_>>(),
+        sqlparser::ast::Expr::Value(_) => vec![],
+        sqlparser::ast::Expr::Function(sqlparser::ast::Function { name, args, .. }) => {
+            match name.to_string().as_str() {
+                "count" => {
+                    let name = args
+                        .iter()
+                        .map(|fa| match fa {
+                            sqlparser::ast::FunctionArg::Unnamed(fa_expr) => match fa_expr {
+                                sqlparser::ast::FunctionArgExpr::Expr(expr) => {
+                                    columns_from_expr(&table_columns, expr)
+                                        .iter()
+                                        .map(|c| c.full_name.clone())
+                                        .collect::<Vec<_>>()
+                                        .join("")
+                                }
+                                sqlparser::ast::FunctionArgExpr::QualifiedWildcard(table_name) => {
+                                    format!("{}({}.*)", name, table_name)
+                                }
+                                sqlparser::ast::FunctionArgExpr::Wildcard => format!("{}(*)", name),
+                            },
+                            _ => todo!(),
+                        })
+                        .collect::<Vec<_>>()
+                        .join("");
+                    vec![Column {
+                        name: name.clone(),
+                        full_name: name,
+                        table_name: "".into(),
+                        data_type: DataType::Integer,
+                        column_type: ColumnType::Aggregate,
+                    }]
+                }
+                _ => todo!("what"),
+            }
+        }
+        _ => todo!(),
+    }
 }
 
 #[derive(Clone, Default, Debug, PartialEq, Eq, Hash)]
@@ -485,9 +712,17 @@ enum DataType {
     Null(Box<DataType>),
 }
 
-fn column(value: &sqlparser::ast::ColumnDef) -> Column {
+fn full_column_name(table_name: Option<&String>, column_name: String) -> String {
+    match table_name {
+        Some(table_name) => format!("{}.{}", table_name, column_name),
+        None => column_name,
+    }
+}
+
+fn column(table_name: Option<&String>, value: &sqlparser::ast::ColumnDef) -> Column {
     let name = value.name.to_string();
-    let data_type = match &value.data_type {
+    let full_name = full_column_name(table_name, name.clone());
+    let inner_data_type = match &value.data_type {
         sqlparser::ast::DataType::Blob(_) => DataType::Blob,
         sqlparser::ast::DataType::Integer(_) => DataType::Integer,
         sqlparser::ast::DataType::Int(_) => DataType::Integer,
@@ -495,61 +730,29 @@ fn column(value: &sqlparser::ast::ColumnDef) -> Column {
         sqlparser::ast::DataType::Text => DataType::Text,
         _ => DataType::Any,
     };
-    let data_type = if is_null(&data_type, &value.options) {
-        DataType::Null(data_type.into())
-    } else {
-        data_type
+    let data_type = match not_null(&inner_data_type, &value.options) {
+        true => inner_data_type,
+        false => DataType::Null(inner_data_type.into()),
     };
+    let table_name = table_name.unwrap_or(&"".into()).clone();
 
-    Column { name, data_type }
+    Column {
+        name,
+        full_name,
+        table_name,
+        data_type,
+        ..Default::default()
+    }
 }
 
-fn is_null(data_type: &DataType, value: &Vec<sqlparser::ast::ColumnOptionDef>) -> bool {
-    value
-        .iter()
-        .filter_map(|opt| match opt.option {
-            sqlparser::ast::ColumnOption::NotNull => Some(()),
-            sqlparser::ast::ColumnOption::Unique { is_primary, .. } => {
-                if is_primary == true && data_type == &DataType::Integer {
-                    Some(())
-                } else {
-                    None
-                }
-            }
-            _ => Some(()),
-        })
-        .count()
-        == 0
-}
-
-fn table(ast: &Vec<Statement>) -> Table {
-    let columns = ast
-        .iter()
-        .flat_map(|statement| match statement {
-            Statement::CreateTable { columns, .. } => {
-                columns.iter().map(column).collect::<Vec<_>>()
-            }
-            Statement::AlterTable { .. } => todo!(),
-            _ => vec![],
-        })
-        .collect();
-
-    let name = ast
-        .iter()
-        .filter_map(|statement| match statement {
-            Statement::CreateTable { name, .. } => Some(
-                name.0
-                    .clone()
-                    .into_iter()
-                    .last()
-                    .expect("create table needs a table name")
-                    .value,
-            ),
-            _ => None,
-        })
-        .last();
-
-    Table { name, columns }
+fn not_null(data_type: &DataType, value: &Vec<sqlparser::ast::ColumnOptionDef>) -> bool {
+    value.iter().any(|opt| match opt.option {
+        sqlparser::ast::ColumnOption::NotNull => true,
+        sqlparser::ast::ColumnOption::Unique { is_primary, .. } => {
+            is_primary && data_type == &DataType::Integer
+        }
+        _ => false,
+    })
 }
 
 fn data_type_tokens(data_type: &DataType) -> TokenStream2 {
@@ -566,13 +769,6 @@ fn data_type_tokens(data_type: &DataType) -> TokenStream2 {
     }
 }
 
-fn column_from_col(col: &Col) -> &Column {
-    match col {
-        Col::Input(col) => col,
-        Col::Output(col) => col,
-    }
-}
-
 fn column_tokens(column: &Column) -> TokenStream2 {
     let data_type = data_type_tokens(&column.data_type);
     let name = syn::Ident::new(&column.name, proc_macro2::Span::call_site());
@@ -582,15 +778,7 @@ fn column_tokens(column: &Column) -> TokenStream2 {
 
 fn param_tokens(column: &Column) -> TokenStream2 {
     let name = syn::Ident::new(&column.name, proc_macro2::Span::call_site());
-
-    match &column.data_type {
-        DataType::Integer => quote!(tokio_rusqlite::types::Value::Integer(self.#name)),
-        DataType::Real => quote!(tokio_rusqlite::types::Value::Real(self.#name)),
-        DataType::Text => quote!(tokio_rusqlite::types::Value::Text(self.#name.clone())),
-        DataType::Blob => quote!(tokio_rusqlite::types::Value::Blob(self.#name.clone())),
-        DataType::Any => quote!(tokio_rusqlite::types::Value::Blob(self.#name.clone())),
-        DataType::Null(_) => quote!(tokio_rusqlite::types::Value::Null),
-    }
+    quote!(#name)
 }
 
 fn row_tokens(column: &Column) -> TokenStream2 {
@@ -608,13 +796,6 @@ fn fn_tokens(column: &Column) -> TokenStream2 {
     quote!(#ident: #fn_type)
 }
 
-fn struct_fields_tokens(column: &Column) -> TokenStream2 {
-    let lit_str = &column.name;
-    let ident = syn::Ident::new(&lit_str, proc_macro2::Span::call_site());
-
-    quote!(#ident)
-}
-
 fn fn_type(data_type: &DataType) -> TokenStream2 {
     match data_type {
         DataType::Integer => quote!(i64),
@@ -629,47 +810,45 @@ fn fn_type(data_type: &DataType) -> TokenStream2 {
     }
 }
 
-fn is_execute(ast: &Vec<Statement>) -> bool {
-    ast.iter()
-        .find(|statement| match statement {
-            // TODO: check returning and return false here instead?
-            Statement::Insert { .. } | Statement::Update { .. } | Statement::Delete { .. } => true,
-            _ => false,
-        })
-        .is_some()
+#[derive(Debug)]
+struct Def {
+    ident: Ident,
+    sql: String,
+    statements: Vec<Statement>,
 }
 
-fn limit_one(ast: &Vec<Statement>) -> bool {
-    ast.iter()
-        .find(|statement| match statement {
-            Statement::Query(query) => match &query.limit {
-                Some(expr) => match expr {
-                    sqlparser::ast::Expr::Value(value) => match value {
-                        sqlparser::ast::Value::Number(x, _) => match x.parse::<i64>() {
-                            Ok(x) => x == 1,
-                            Err(_) => false,
-                        },
-                        _ => false,
-                    },
-                    _ => false,
-                },
-                None => false,
-            },
-            _ => false,
-        })
-        .is_some()
+#[derive(Debug)]
+struct Input {
+    defs: Vec<Def>,
+    columns: HashSet<Column>,
 }
 
-fn output_column(col: &Col) -> Option<&Column> {
-    match col {
-        Col::Input(_) => None,
-        Col::Output(c) => Some(c),
-    }
+#[derive(Debug)]
+struct Output {
+    stmts: Vec<Stmt>,
 }
 
-fn input_column(col: &Col) -> Option<&Column> {
-    match col {
-        Col::Input(input) => Some(input),
-        Col::Output(_) => None,
-    }
+#[derive(Debug)]
+enum Stmt {
+    ExecuteBatch {
+        ident: Ident,
+        sql: String,
+    },
+    Execute {
+        ident: Ident,
+        sql: String,
+        in_cols: Vec<Column>,
+    },
+    AggQuery {
+        ident: Ident,
+        sql: String,
+        in_cols: Vec<Column>,
+    },
+    Query {
+        ident: Ident,
+        sql: String,
+        in_cols: Vec<Column>,
+        out_cols: Vec<Column>,
+        ret: QueryReturn,
+    },
 }

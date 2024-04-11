@@ -6,9 +6,10 @@ pub use serde::{self, Deserialize, Serialize};
 pub use tokio_rusqlite::{self, Connection};
 extern crate self as ryde_db;
 
-async fn connection() -> &'static Connection {
+static CONNECTION: OnceLock<Connection> = OnceLock::new();
+
+pub async fn connection() -> &'static Connection {
     let database_url = std::env::var("DATABASE_URL").unwrap_or("db.sqlite3".into());
-    static CONNECTION: OnceLock<Connection> = OnceLock::new();
     match CONNECTION.get() {
         Some(connection) => connection,
         None => {
@@ -32,96 +33,87 @@ async fn connection() -> &'static Connection {
     }
 }
 
-pub trait Query
-where
-    Self: Sized,
-{
-    fn sql() -> &'static str;
-    fn is_execute() -> bool;
-    fn params(&self) -> Vec<tokio_rusqlite::types::Value>;
-    fn new(row: &tokio_rusqlite::Row<'_>) -> rusqlite::Result<Self>;
-}
-
-pub async fn execute<T: Query + Send + Sync + 'static>(t: T) -> tokio_rusqlite::Result<usize> {
-    connection()
-        .await
-        .call(move |conn| {
-            let params_iter = t.params();
-            let params = tokio_rusqlite::params_from_iter(params_iter);
-            conn.execute(T::sql(), params).map_err(|err| err.into())
-        })
-        .await
-        .into()
-}
-
-pub async fn query<T: Query + Send + Sync + 'static>(t: T) -> tokio_rusqlite::Result<Vec<T>> {
-    connection()
-        .await
-        .call(move |conn| {
-            let sql = T::sql();
-            let mut stmt = conn.prepare(sql)?;
-            let params_iter = t.params();
-            let params = tokio_rusqlite::params_from_iter(params_iter);
-            let rows = stmt
-                .query_map(params, |row| T::new(row))?
-                .collect::<rusqlite::Result<Vec<T>>>();
-            rows.map_err(|err| err.into())
-        })
-        .await
-        .into()
-}
-
-pub async fn query_one<T: Clone + Query + Send + Sync + 'static>(
-    t: T,
-) -> tokio_rusqlite::Result<Option<T>> {
-    connection()
-        .await
-        .call(move |conn| {
-            let sql = T::sql();
-            let mut stmt = conn.prepare(sql)?;
-            let params_iter = t.params();
-            let params = tokio_rusqlite::params_from_iter(params_iter);
-            let rows = stmt
-                .query_map(params, |row| T::new(row))?
-                .collect::<rusqlite::Result<Vec<T>>>();
-            match rows {
-                Ok(rows) => Ok(rows.last().cloned()),
-                Err(err) => Err(err.into()),
-            }
-        })
-        .await
-        .into()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use tokio::test;
 
     db!(
-        "create table if not exists posts (id integer primary key not null, title text not null)",
-        (
-            insert_post,
-            "insert into posts (title) values (?) returning *"
-        ),
-        (select_posts, "select * from posts where id = ?"),
+        initial_schema = "
+        create table if not exists posts (
+            id integer primary key not null,
+            title text not null,
+            test integer
+        );
+        create table if not exists likes (
+            id integer primary key not null,
+            post_id integer not null references posts(id)
+        )",
+        insert_post = "
+            insert into posts (title, test)
+            values (?, ?)
+            returning title, test
+        ",
+        select_posts = "select id, title, test from posts",
+        select_post = "select id, title, test from posts where id = ? limit 1",
+        like_post = "insert into likes (post_id) values (?) returning id, post_id",
+        select_likes = "
+            select
+                likes.id,
+                likes.post_id,
+                posts.title
+            from
+                likes
+            join
+                posts on posts.id = likes.post_id
+            where
+                likes.id = ?",
+        update_post = "
+            update posts
+            set title = ?, test = ?
+            where id = ?
+            returning id, title, test",
+        delete_like = "delete from likes where id = ?",
+        delete_post = "delete from posts where id = ?",
+        post_count = "select count(*) from posts"
     );
 
     #[test]
     async fn it_works() {
-        let posts = insert_post("title".into()).await.unwrap();
-        assert_eq!(posts[0].title, "title");
+        std::env::set_var("DATABASE_URL", ":memory:");
+        initial_schema().await.unwrap();
+        let post: Option<InsertPost> = insert_post("title".into(), Some(1)).await.unwrap();
+        let post = post.unwrap();
+        assert_eq!(post.title, "title");
+        assert_eq!(post.test, Some(1));
 
-        let found_posts = select_posts(1).await.unwrap();
-        // assert_eq!(found_posts);
+        let post: SelectPost = select_post(1).await.unwrap().unwrap();
+        assert_eq!(post.id, 1);
+        assert_eq!(post.title, "title");
+        assert_eq!(post.test, Some(1));
 
-        // let rows = query(Post{
-        //     id: 1,
-        //     ..Default::default()
-        // })
-        // .await
-        // .unwrap();
-        // assert_eq!(rows[0].id, 1);
-        // assert_eq!(rows[0].title, "title");
+        let likes = like_post(1).await.unwrap().unwrap();
+        assert_eq!(likes.post_id, 1);
+        let likes = select_likes(likes.id).await.unwrap();
+        assert_eq!(likes[0].post_id, 1);
+        assert_eq!(likes[0].title, "title");
+
+        let post = update_post("new title".into(), Some(2), 1)
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(post.id, 1);
+        assert_eq!(post.title, "new title");
+        assert_eq!(post.test, Some(2));
+
+        let _like = delete_like(1).await.unwrap();
+        let _post = delete_post(1).await.unwrap();
+
+        let posts = select_posts().await.unwrap();
+        assert_eq!(posts.len(), 0);
+
+        let post_count = post_count().await.unwrap();
+        assert_eq!(post_count, 0);
     }
 }

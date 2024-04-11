@@ -16,6 +16,5 @@ proc-macro2 = "1"
 quote = "1"
 syn = { version = "1", features = ["full"] }
 proc-macro-error = "1"
-rusqlite = { version = "0.31.0" }
 sqlparser = { version = "0.43.1" }
 

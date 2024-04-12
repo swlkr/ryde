@@ -32,7 +32,7 @@ ryde_static_files = { path = "crates/static_files", version = "0.1.0" }
 axum = { version = "0.7.4", features = ["macros"] }
 serde = { version = "1.0.197", features = ["derive"] }
 tokio = { version = "1.36.0", features = ["rt-multi-thread", "macros"] }
-axum-extra = { version = "0.9.2", features = ["cookie", "typed-header"] }
+axum-extra = { version = "0.9.2", features = ["cookie", "typed-header", "multipart"] }
 ryde_css = { workspace = true }
 ryde_db = { workspace = true }
 ryde_html = { workspace = true }

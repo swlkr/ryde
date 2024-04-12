@@ -1,9 +1,12 @@
 use ryde::*;
 
-route!((get, "/", index));
+routes!(("/", get(index)));
 
-listen!("::1:3000");
+#[main]
+async fn main() {
+    serve("::1:9001", routes()).await
+}
 
-async fn index() -> Response {
-    res!(Route::Index)
+async fn index() -> String {
+    url!(index)
 }

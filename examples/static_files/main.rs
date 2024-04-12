@@ -1,9 +1,10 @@
 use ryde::*;
 
-route!((get, "/*files", files_handler));
+routes!(("/*files", get(files_handler)));
 
 serve_static_files!("examples/static_files/static", files_handler);
 
-fn main() {
-    serve!("localhost:3000")
+#[main]
+async fn main() {
+    serve("localhost:9001", routes()).await
 }

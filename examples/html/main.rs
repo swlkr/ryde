@@ -1,17 +1,18 @@
 use ryde::*;
 
-route!((get, "/", index), (get, "/*files", files_handler),);
+routes!(("/", get(index)), ("/*files", get(files_handler)));
 serve_static_files!("examples/html/static", files_handler);
 
-fn main() {
-    serve!("::1:3000")
+#[main]
+async fn main() {
+    serve("::1:3000", routes()).await
 }
 
 async fn index() -> Response {
-    render(div((h1(Route::Index), p("ryde with rust! 🐎"))))
+    render(div((h1(url!(index)), p("ryde with rust! 🐎"))))
 }
 
-fn h1(route: Route) -> Element {
+fn h1(route: String) -> Element {
     let css = css!(
         "font-size: var(--font-size-2)",
         "line-height: var(--line-height-2)",

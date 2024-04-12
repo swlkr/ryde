@@ -1,32 +1,32 @@
 use ryde::*;
 
-route!(
-    (get, "/", index),
-    (post, "/todos", todos_create),
-    (get, "/todos/:id/edit", todos_edit, i64),
-    (post, "/todos/:id/edit", todos_update, i64),
-    (post, "/todos/:id/delete", todos_delete, i64)
-);
-
 db!(
-    "create table if not exists todos (
+    create_todos = "create table if not exists todos (
         id integer primary key,
         content text not null,
         created_at integer not null default(unixepoch())
     )",
-    "create unique index if not exists todos_content_ix on todos(content)",
-    (insert_todo, "insert into todos (content) values (?)"),
-    (update_todo, "update todos set content = ? where id = ?"),
-    (delete_todo, "delete from todos where id = ?"),
-    (todo, "select * from todos where id = ? limit 1"),
-    (
-        todos,
-        "select * from todos order by created_at desc limit 30"
-    ),
+    create_todos_content_ix =
+        "create unique index if not exists todos_content_ix on todos(content)",
+    insert_todo = "insert into todos (content) values (?) returning todos.*",
+    update_todo = "update todos set content = ? where id = ? returning todos.*",
+    delete_todo = "delete from todos where id = ?",
+    todo = "select todos.* from todos where id = ? limit 1",
+    todos = "select todos.* from todos order by created_at desc limit 30",
 );
 
-fn main() {
-    serve!("::1:3000")
+routes!(
+    ("/", get(index)),
+    ("/todos", post(todos_create)),
+    ("/todos/:id/edit", get(todos_edit).post(todos_update)),
+    ("/todos/:id/delete", get(todos_delete))
+);
+
+#[main]
+async fn main() {
+    create_todos().await.unwrap();
+    create_todos_content_ix().await.unwrap();
+    serve("::1:3000", routes()).await;
 }
 
 async fn index() -> Result<Response> {
@@ -39,7 +39,7 @@ async fn todos_create(Form(todo): Form<InsertTodo>) -> Result<Response> {
     let result = insert_todo(todo.content).await;
 
     let res = match is_unique!(result)? {
-        true => redirect_to(Route::Index),
+        true => redirect_to(url!(index)),
         false => {
             let todos = todos().await?;
             render(index_view("todo already exists", todos))
@@ -58,7 +58,7 @@ async fn todos_update(Path(id): Path<i64>, Form(todo): Form<UpdateTodo>) -> Resu
     let result = update_todo(todo.content, id).await;
 
     let res = match is_unique!(result)? {
-        true => redirect_to(Route::Index),
+        true => redirect_to(url!(index)),
         false => {
             let todos = todos().await?;
             render(index_view("todo already exists", todos))
@@ -71,18 +71,19 @@ async fn todos_update(Path(id): Path<i64>, Form(todo): Form<UpdateTodo>) -> Resu
 async fn todos_delete(Path(id): Path<i64>) -> Result<Response> {
     let _ = delete_todo(id).await?;
 
-    Ok(redirect_to(Route::Index))
+    Ok(redirect_to(url!(index)))
 }
 
 fn todo_form(todo: Option<Todo>) -> Element {
     let route = match &todo {
-        Some(t) => Route::TodosUpdate(t.id),
-        None => Route::TodosCreate,
+        Some(t) => url!(todos_update, t.id),
+        None => url!(todos_create),
     };
     let (id, content) = match todo {
         Some(t) => (t.id, t.content),
         None => (0, "".into()),
     };
+
     form((
         input()
             .type_("text")
@@ -98,7 +99,7 @@ fn todo_form(todo: Option<Todo>) -> Element {
 
 fn delete_todo_form(id: i64) -> Element {
     form(input().type_("submit").value("delete"))
-        .action(Route::TodosDelete(id))
+        .action(url!(todos_delete, id))
         .method("POST")
 }
 
@@ -119,7 +120,7 @@ fn todo_list_item(todo: Todos) -> Element {
 
     li((
         div((todo.id, ", ", todo.content, ", ", todo.created_at)),
-        a("edit").href(Route::TodosEdit(todo.id)),
+        a("edit").href(url!(todos_edit, todo.id)),
         delete_todo_form(todo.id),
     ))
     .css(css)

@@ -1,43 +1,44 @@
 use ryde::*;
 
-route!(
-    (get, "/", index),
-    (post, "/todos", post_todos),
-    (get, "/todos/:id/edit", todos_edit, i64),
-    (put, "/todos/:id", todos_update, i64),
-    (get, "/orgs/:org_id/todos/:id", org_todos_update, i64, i64),
-    (get, "/search", search, q: Option<String>)
+routes!(
+    ("/", get(index)),
+    ("/todos", post(post_todos)),
+    ("/todos/:id/edit", get(todos_edit)),
+    ("/todos/:id", put(todos_update)),
+    ("/orgs/:org_id/todos/:id", get(org_todos_update)),
+    ("/search", get(search))
 );
 
-fn main() {
-    serve!("::1:3000")
+#[main]
+async fn main() {
+    serve("::1:9001", routes()).await
 }
 
 async fn index() -> String {
-    Route::Index.to_string()
+    url!(index)
 }
 
 async fn post_todos() -> String {
-    Route::PostTodos.to_string()
+    url!(post_todos)
 }
 
 async fn todos_edit(Path(id): Path<i64>) -> String {
-    Route::TodosEdit(id).to_string()
+    url!(todos_edit, id)
 }
 
 async fn todos_update(Path(id): Path<i64>) -> String {
-    Route::TodosUpdate(id).to_string()
+    url!(todos_update, id)
 }
 
 async fn org_todos_update(Path((org_id, id)): Path<(i64, i64)>) -> String {
-    Route::OrgTodosUpdate(org_id, id).to_string()
+    url!(org_todos_update, org_id, id)
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 struct Search {
     q: Option<String>,
 }
 
 async fn search(Query(Search { q }): Query<Search>) -> String {
-    Route::Search { q }.to_string()
+    format!("{}?q={}", url!(search), q.unwrap_or_default())
 }

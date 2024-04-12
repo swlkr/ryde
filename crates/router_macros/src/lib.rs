@@ -1,447 +1,219 @@
 use proc_macro::TokenStream;
 use proc_macro2::{Span, TokenStream as TokenStream2};
 use quote::{quote, ToTokens};
+use std::collections::HashSet;
 use syn::{
-    parse::Parse, parse_macro_input, punctuated::Punctuated, Attribute, Data, DeriveInput, Expr,
-    Fields, FieldsNamed, FieldsUnnamed, Ident, ItemEnum, ItemStruct, LitStr, Result, Token, Type,
-    Variant,
+    parse::Parse, parse_macro_input, punctuated::Punctuated, Expr, ExprCall, ExprLit,
+    ExprMethodCall, ExprPath, ExprTuple, Ident, Lit, Result, Token,
 };
 
 #[proc_macro]
-pub fn route(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input with Punctuated::<Expr, Token![,]>::parse_terminated);
-    match route_macro(input) {
-        Ok(s) => s.to_token_stream().into(),
-        Err(e) => e.to_compile_error().into(),
-    }
-}
-
-fn route_macro(input: Punctuated<Expr, Token![,]>) -> Result<TokenStream2> {
-    let fields = input.iter().flat_map(|expr| match expr {
-        Expr::Tuple(expr_tuple) => field(&expr_tuple.elems),
-        _ => unimplemented!(),
-    });
-
-    Ok(quote! {
-        #[allow(unused)]
-        #[router]
-        enum Route {
-            #(#fields,)*
-        }
-    })
-}
-
-fn field(input: &Punctuated<Expr, Token![,]>) -> Result<TokenStream2> {
-    let mut iter = input.iter();
-    let (left, middle, right, rest) = (iter.next(), iter.next(), iter.next(), iter);
-
-    let method_ident = match left {
-        Some(expr) => match expr {
-            Expr::Path(expr_path) => expr_path.path.get_ident(),
-            _ => unimplemented!(),
-        },
-        None => unimplemented!(),
-    };
-    let method_ident = method_ident.expect("Needs to be an http method or embed");
-
-    let route = match middle {
-        Some(expr) => match expr {
-            Expr::Lit(expr_lit) => match expr_lit.lit {
-                syn::Lit::Str(ref lit_str) => lit_str,
-                _ => unimplemented!(),
-            },
-            _ => unimplemented!(),
-        },
-        None => unimplemented!(),
-    };
-
-    let fn_ident = match right {
-        Some(expr) => match expr {
-            Expr::Path(expr_path) => expr_path.path.get_ident().cloned(),
-            _ => unimplemented!(),
-        },
-        None => Some(Ident::new("StaticFiles", Span::call_site())),
-    };
-    let fn_ident = fn_ident.expect("Needs to be a function handler name");
-    let fn_ident = Ident::new(&snake_to_pascal(fn_ident.to_string()), fn_ident.span());
-
-    let params = rest
-        .map(|expr| match expr {
-            Expr::Path(expr_path) => match expr_path.path.get_ident() {
-                Some(ident) => Param::Ident(quote! { #ident }),
-                None => Param::None,
-            },
-            Expr::Type(expr_type) => Param::Type(quote! { #expr_type }),
-            _ => Param::None,
-        })
-        .collect::<Vec<_>>();
-    let surround = params
-        .iter()
-        .map(|p| match p {
-            Param::Ident(_) => Surround::Paren,
-            Param::Type(_) => Surround::Curly,
-            Param::None => Surround::None,
-        })
-        .last();
-    let params = params
-        .iter()
-        .map(|p| match p {
-            Param::Ident(tokens) => quote! { #tokens },
-            Param::Type(tokens) => quote! { #tokens},
-            Param::None => quote! {},
-        })
-        .collect::<Vec<_>>();
-
-    let params = match surround {
-        Some(s) => match s {
-            Surround::Paren => quote! { (#(#params,)*) },
-            Surround::Curly => quote! { {#(#params,)*} },
-            Surround::None => quote! {},
-        },
-        None => quote! {},
-    };
-
-    Ok(quote! {
-        #[#method_ident(#route)]
-        #fn_ident #params
-    })
-}
-
-enum Param {
-    Ident(TokenStream2),
-    Type(TokenStream2),
-    None,
-}
-
-enum Surround {
-    Paren,
-    Curly,
-    None,
-}
-
-fn snake_to_pascal(input: String) -> String {
-    input
-        .split("_")
-        .filter(|x| !x.is_empty())
-        .map(|x| {
-            let mut chars = x.chars();
-            format!("{}{}", chars.nth(0).unwrap().to_uppercase(), chars.as_str())
-        })
-        .collect::<String>()
-}
-
-struct Args {
-    state: Option<Type>,
-}
-
-impl Parse for Args {
-    fn parse(input: syn::parse::ParseStream) -> Result<Self> {
-        let state = input.parse::<Type>().ok();
-
-        Ok(Self { state })
-    }
-}
-
-#[proc_macro_attribute]
-pub fn params(args: TokenStream, input: TokenStream) -> TokenStream {
-    let args = parse_macro_input!(args as Args);
-    let input = parse_macro_input!(input as ItemStruct);
-    match params_macro(args, input) {
-        Ok(s) => s.to_token_stream().into(),
-        Err(e) => e.to_compile_error().into(),
-    }
-}
-
-fn params_macro(_args: Args, item_enum: ItemStruct) -> Result<TokenStream2> {
-    let expanded = quote! {
-        #[derive(Default, Debug, Deserialize, Serialize, Clone)]
-        #[serde(crate = "crate::serde")]
-        #item_enum
-    };
-
-    Ok(expanded)
-}
-
-#[proc_macro_attribute]
-pub fn router(args: TokenStream, input: TokenStream) -> TokenStream {
-    let args = parse_macro_input!(args as Args);
-    let input = parse_macro_input!(input as ItemEnum);
-    match router_macro(args, input) {
-        Ok(s) => s.to_token_stream().into(),
-        Err(e) => e.to_compile_error().into(),
-    }
-}
-
-fn router_macro(args: Args, item_enum: ItemEnum) -> Result<TokenStream2> {
-    let attr = match args.state {
-        Some(st) => quote! { #st },
-        None => quote! { () },
-    };
-
-    let expanded = quote! {
-        #[derive(ryde_router::Routes)]
-        #[state(#attr)]
-        #item_enum
-    };
-
-    Ok(expanded)
-}
-
-#[proc_macro_derive(
-    Routes,
-    attributes(get, post, delete, patch, put, state, embed, folder)
-)]
-pub fn routes(s: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(s as DeriveInput);
+pub fn routes(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as StateRouter);
     match routes_macro(input) {
         Ok(s) => s.to_token_stream().into(),
         Err(e) => e.to_compile_error().into(),
     }
 }
 
-fn routes_macro(input: DeriveInput) -> Result<TokenStream2> {
-    let enum_name = input.ident;
-    let Data::Enum(data) = input.data else {
-        panic!("Only enums are supported");
-    };
-
-    let arg = input
-        .attrs
+fn routes_macro(input: StateRouter) -> Result<TokenStream2> {
+    let parts: Vec<(&Lit, Vec<(Ident, Ident)>)> = input
+        .routes
         .iter()
-        .filter(|attr| match attr.path.get_ident() {
-            Some(ident) => ident.to_string() == "state",
-            None => false,
-        })
-        .filter_map(args)
-        .last();
+        .filter_map(|ExprTuple { elems, .. }| {
+            let mut iter = elems.iter();
+            let (Some(Expr::Lit(ExprLit { lit, .. })), Some(expr)) = (iter.nth(0), iter.nth(0))
+            else {
+                return None;
+            };
 
-    let state_generic = match arg {
-        Some(Args { state }) => quote! { #state },
+            match expr {
+                Expr::Call(ExprCall { func, args, .. }) => {
+                    let handler = handler(args);
+                    let fn_name = match &**func {
+                        Expr::Path(ExprPath { path, .. }) => path
+                            .get_ident()
+                            .expect("fn name should be an identifier")
+                            .clone(),
+                        _ => panic!("fn name should be an identifier"),
+                    };
+
+                    Some(vec![(lit, vec![(fn_name, handler)])])
+                }
+                Expr::MethodCall(ExprMethodCall {
+                    receiver,
+                    method,
+                    args,
+                    ..
+                }) => {
+                    let handler = handler(args);
+                    let mut result: Vec<(Ident, Ident)> = vec![(method.clone(), handler)];
+                    result.extend(method_router(&receiver));
+
+                    Some(vec![(lit, result)])
+                }
+                _ => None,
+            }
+        })
+        .flatten()
+        .collect();
+
+    let routes = parts
+        .iter()
+        .map(|(lit, method_router)| {
+            let tokens = method_router
+                .iter()
+                .map(|(fn_name, handler)| quote! { #fn_name(#handler) })
+                .collect::<Vec<_>>();
+
+            quote! {
+                .route(#lit, #(#tokens).*)
+            }
+        })
+        .collect::<Vec<_>>();
+
+    let helpers = parts
+        .iter()
+        .flat_map(|(lit, method_router)| {
+            method_router
+                .iter()
+                .map(|(_method, handler)| handler.to_string())
+                .collect::<HashSet<_>>()
+                .into_iter()
+                .map(|x| {
+                    let ident = Ident::new(&format!("{}_path", x), Span::call_site());
+                    let s = match lit {
+                        syn::Lit::Str(s) => s.value(),
+                        _ => panic!("route needs to a string"),
+                    };
+                    let format_string = s
+                        .split("/")
+                        .map(|x| match x.starts_with(":") {
+                            true => "{}",
+                            false => x,
+                        })
+                        .collect::<Vec<_>>()
+                        .join("/");
+                    let fn_args = s
+                        .split("/")
+                        .filter(|x| x.starts_with(":"))
+                        .map(|s| {
+                            let ident = Ident::new(&s.replace(":", ""), Span::call_site());
+
+                            quote! { #ident: impl std::fmt::Display }
+                        })
+                        .collect::<Vec<_>>();
+                    let format_args = s
+                        .split("/")
+                        .filter(|x| x.starts_with(":"))
+                        .map(|s| Ident::new(&s.replace(":", ""), Span::call_site()))
+                        .collect::<Vec<_>>();
+
+                    quote! {
+                        fn #ident(#(#fn_args,)*) -> String {
+                            format!(#format_string, #(#format_args,)*)
+                        }
+                    }
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+
+    let generic = match input.state {
+        Some(tp) => quote! { #tp },
         None => quote! { () },
     };
 
-    let variants = data
-        .variants
-        .iter()
-        .map(|variant| RouteVariant::from(variant))
-        .collect::<Vec<_>>();
-
-    let urls = variants
-        .iter()
-        .map(
-            |RouteVariant {
-                 ref variant,
-                 ref fields,
-                 ref path,
-                 ..
-             }| {
-                let left = left(&enum_name, variant, fields);
-                let right = right(fields, path);
-
-                quote! { #left => #right }
-            },
-        )
-        .collect::<Vec<_>>();
-
-    let methods = variants
-        .iter()
-        .map(
-            |RouteVariant {
-                 ref method,
-                 ref variant,
-                 ref fields,
-                 ..
-             }| {
-                let left = left(&enum_name, variant, fields);
-                let right = method.to_string();
-
-                quote! { #left => #right.to_owned() }
-            },
-        )
-        .collect::<Vec<_>>();
-
-    let axum_route = variants
-        .iter()
-        .map(
-            |RouteVariant {
-                 ref path,
-                 ref method,
-                 ref variant,
-                 ..
-             }| {
-                let fn_string = pascal_to_camel(&variant.to_string());
-                let fn_name = Ident::new(&fn_string, method.span());
-                quote! { .route(#path, #method(#fn_name)) }
-            },
-        )
-        .collect::<Vec<_>>();
-
     Ok(quote! {
-        impl #enum_name {
-            fn url(&self) -> String {
-                match self {
-                    #(#urls,)*
-                }
-            }
+        fn routes() -> axum::Router<#generic> {
+            use axum::routing::{get, post, put, patch, head, trace};
 
-            #[allow(unused)]
-            fn method(&self) -> String {
-                match self {
-                    #(#methods,)*
-                }
-            }
-
-            fn router() -> axum::Router<#state_generic> {
-                use axum::routing::{get, post, patch, put, delete};
-                axum::Router::new()#(#axum_route)*
-            }
+            axum::Router::new()#(#routes)*
         }
 
-        impl std::fmt::Display for #enum_name {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                f.write_fmt(format_args!("{}", self.url()))
-            }
-        }
-
-        use std::io::Write;
-
-        impl html::Render for #enum_name {
-            fn render(&self, buffer: &mut Vec<u8>) -> std::io::Result<()> {
-                buffer.write_fmt(format_args!("{}", self.to_string()))
-            }
-        }
+        #(#helpers)*
     })
 }
 
-fn right_from_unnamed(path: &LitStr, fields: &FieldsUnnamed) -> TokenStream2 {
-    let format = path
-        .value()
-        .split('/')
-        .map(|part| if part.starts_with(":") { "{}" } else { part })
-        .collect::<Vec<_>>()
-        .join("/");
+fn method_router(expr: &Expr) -> Vec<(Ident, Ident)> {
+    match expr {
+        Expr::Call(ExprCall { func, args, .. }) => {
+            let method_name = match &**func {
+                Expr::Path(ExprPath { path, .. }) => path
+                    .get_ident()
+                    .cloned()
+                    .expect("fn name should be an identifier"),
+                _ => unimplemented!(),
+            };
+            let handler = handler(args);
 
-    let idents = fields
-        .unnamed
-        .iter()
-        .enumerate()
-        .map(|(i, _field)| Ident::new(&format!("x{}", i), Span::call_site()))
-        .collect::<Vec<_>>();
-
-    quote! { format!(#format, #(#idents,)*) }
-}
-
-fn right_from_named(fields: &FieldsNamed, path: &LitStr) -> TokenStream2 {
-    let idents = fields
-        .named
-        .iter()
-        .map(|field| field.ident.as_ref().unwrap())
-        .collect::<Vec<_>>();
-
-    let query = idents
-        .iter()
-        .map(|ident| format!("{}={{:?}}", ident))
-        .collect::<Vec<_>>()
-        .join("&");
-
-    let format = format!("{}?{}", path.value(), query);
-
-    quote! { format!(#format, #(#idents,)*) }
-}
-
-fn right(fields: &Fields, path: &LitStr) -> TokenStream2 {
-    match fields {
-        Fields::Named(fields) => right_from_named(fields, path),
-        Fields::Unnamed(fields) => right_from_unnamed(path, fields),
-        Fields::Unit => quote! { #path.to_owned() },
-    }
-}
-
-fn left_from_named(r#ident: &Ident, variant: &Ident, fields: &FieldsNamed) -> TokenStream2 {
-    let idents = fields
-        .named
-        .iter()
-        .map(|field| field.ident.as_ref().unwrap())
-        .collect::<Vec<_>>();
-
-    quote! {
-        #r#ident::#variant { #(#idents,)* }
-    }
-}
-
-fn left_from_unnamed(r#ident: &Ident, variant: &Ident, fields: &FieldsUnnamed) -> TokenStream2 {
-    let idents = fields
-        .unnamed
-        .iter()
-        .enumerate()
-        .map(|(i, _field)| Ident::new(&format!("x{}", i), Span::call_site()))
-        .collect::<Vec<_>>();
-
-    quote! {
-        #r#ident::#variant(#(#idents,)*)
-    }
-}
-
-fn left(r#ident: &Ident, variant: &Ident, fields: &Fields) -> TokenStream2 {
-    match fields {
-        syn::Fields::Named(fields) => left_from_named(r#ident, variant, fields),
-        syn::Fields::Unnamed(fields) => left_from_unnamed(r#ident, variant, fields),
-        syn::Fields::Unit => quote! { #r#ident::#variant },
-    }
-}
-
-fn pascal_to_camel(input: &str) -> String {
-    let mut result = String::with_capacity(input.len());
-    let mut chars = input.chars();
-    if let Some(char) = &chars.nth(0) {
-        result.push(char.to_ascii_lowercase());
-    }
-
-    while let Some(char) = chars.next() {
-        if char.is_uppercase() {
-            result.push('_');
-            result.push(char.to_lowercase().next().unwrap());
-        } else {
-            result.push(char);
+            vec![(method_name, handler)]
         }
-    }
-
-    result
-}
-
-#[derive(Clone)]
-struct RouteVariant<'a> {
-    method: Ident,
-    path: LitStr,
-    variant: &'a Ident,
-    fields: &'a Fields,
-}
-
-impl<'a> From<&'a Variant> for RouteVariant<'a> {
-    fn from(value: &'a Variant) -> Self {
-        let variant = &value.ident;
-        let (method, path) = value
-            .attrs
-            .iter()
-            .filter_map(
-                |attr| match (attr.path.get_ident(), attr.parse_args::<LitStr>().ok()) {
-                    (Some(ident), Some(path)) => Some((ident.clone(), path)),
-                    _ => None,
-                },
-            )
-            .last()
-            .expect("should be #[get], #[post], #[put], #[delete], #[state]");
-        let fields = &value.fields;
-
-        RouteVariant {
-            path,
+        Expr::MethodCall(ExprMethodCall {
+            receiver,
             method,
-            variant,
-            fields,
+            args,
+            ..
+        }) => {
+            let handler = handler(args);
+
+            let mut result = vec![(method.clone(), handler)];
+            result.extend(method_router(&receiver));
+            result
         }
+        _ => unimplemented!(),
     }
 }
 
-fn args(attr: &Attribute) -> Option<Args> {
-    attr.parse_args::<Args>().ok()
+fn handler(args: &Punctuated<Expr, syn::token::Comma>) -> Ident {
+    match args.first() {
+        Some(Expr::Path(ExprPath { path, .. })) => path
+            .get_ident()
+            .cloned()
+            .expect("only named fns as handlers are supported"),
+
+        _ => unimplemented!(),
+    }
+}
+
+#[proc_macro]
+pub fn url(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input with Punctuated::<Expr, Token![,]>::parse_terminated);
+    match url_macro(input) {
+        Ok(s) => s.to_token_stream().into(),
+        Err(e) => e.to_compile_error().into(),
+    }
+}
+
+fn url_macro(input: Punctuated<Expr, Token![,]>) -> Result<TokenStream2> {
+    let Some(Expr::Path(ExprPath { path, .. })) = input.first() else {
+        panic!("first argument should be an handler fn name");
+    };
+    let Some(ident) = path.get_ident() else {
+        panic!("first argument should be an ident");
+    };
+    let fn_name = Ident::new(&format!("{}_path", ident.to_string()), Span::call_site());
+    let rest = input.iter().skip(1).collect::<Vec<_>>();
+
+    Ok(quote! {
+        #fn_name(#(#rest,)*)
+    })
+}
+
+struct StateRouter {
+    routes: Punctuated<ExprTuple, Token![,]>,
+    state: Option<syn::TypePath>,
+}
+
+impl Parse for StateRouter {
+    fn parse(input: syn::parse::ParseStream) -> Result<Self> {
+        let routes = Punctuated::parse_separated_nonempty(input)?;
+
+        let state = match input.parse::<syn::Ident>().ok() {
+            Some(_) => input.parse::<syn::TypePath>().ok(),
+            None => None,
+        };
+
+        Ok(Self { state, routes })
+    }
 }

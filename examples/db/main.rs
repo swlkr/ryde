@@ -8,8 +8,8 @@ db!(
     )",
     create_todos_content_ix =
         "create unique index if not exists todos_content_ix on todos(content)",
-    insert_todo = "insert into todos (content) values (?) returning todos.*",
-    update_todo = "update todos set content = ? where id = ? returning todos.*",
+    insert_todo = "insert into todos (content) values (?) returning content",
+    update_todo = "update todos set content = ? where id = ? returning id, content",
     delete_todo = "delete from todos where id = ?",
     todo = "select todos.* from todos where id = ? limit 1",
     todos = "select todos.* from todos order by created_at desc limit 30",
@@ -19,7 +19,7 @@ routes!(
     ("/", get(index)),
     ("/todos", post(todos_create)),
     ("/todos/:id/edit", get(todos_edit).post(todos_update)),
-    ("/todos/:id/delete", get(todos_delete))
+    ("/todos/:id/delete", post(todos_delete))
 );
 
 #[main]

@@ -11,12 +11,10 @@ pub use axum_extra::headers;
 pub use cookie::Cookie;
 pub use ryde_css::css;
 pub use ryde_db;
-pub use ryde_db::db;
-pub use ryde_db::rusqlite;
-pub use ryde_db::tokio_rusqlite;
+pub use ryde_db::{connection, db, rusqlite, tokio_rusqlite, Connection};
 pub use ryde_html::{self as html, *};
 pub use ryde_router;
-pub use ryde_router::{params, route, router, Routes};
+pub use ryde_router::{routes, url};
 pub use ryde_static_files::{self as static_files, StaticFiles};
 pub use serde;
 pub use serde::*;
@@ -27,41 +25,20 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 pub fn server(ip: &str, router: Router) -> Result<()> {
     let rt = tokio::runtime::Runtime::new().unwrap();
-    rt.block_on(async {
-        let listener = tokio::net::TcpListener::bind(ip).await.unwrap();
-        println!("Listening on {}", ip);
-        axum::serve(listener, router).await.unwrap();
-    });
+    rt.block_on(async { serve(ip, router).await });
     Ok(())
 }
 
-#[macro_export]
-macro_rules! serve {
-    ($ip:expr) => {
-        server($ip, Route::router()).unwrap()
-    };
-    ($ip:expr, $router:expr) => {
-        server($ip, $router).unwrap()
-    };
+pub async fn serve(ip: &str, router: Router) {
+    let listener = tokio::net::TcpListener::bind(ip).await.unwrap();
+    println!("Listening on {}", ip);
+    axum::serve(listener, router).await.unwrap();
 }
 
 #[macro_export]
 macro_rules! render_static_files {
     () => {{
         Assets::render()
-    }};
-}
-
-#[macro_export]
-macro_rules! res {
-    ($expr:expr) => {{
-        impl IntoResponse for Route {
-            fn into_response(self) -> Response {
-                self.to_string().into_response()
-            }
-        }
-
-        $expr.into_response()
     }};
 }
 
@@ -104,6 +81,11 @@ pub fn document() -> Document {
 
 pub fn render(element: Element) -> Html {
     Html(html::render(element))
+}
+
+pub fn x_redirect(route: impl Display) -> Response {
+    let headers = [("x-location", route.to_string())];
+    (http::StatusCode::OK, headers).into_response()
 }
 
 pub fn redirect_to(route: impl Display) -> Response {
@@ -151,6 +133,38 @@ pub enum Error {
     Io(String),
     NotFound,
     InternalServer,
+    Multipart(String),
+}
+
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut __private::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Error::DatabaseConnectionClosed => f.write_str("Error: Database connection closed"),
+            Error::DatabaseClose => f.write_str("Error: Database was already closed"),
+            Error::Database(e) => f.write_fmt(format_args!("Error: Generic database error {}", e)),
+            Error::UniqueConstraintFailed(e) => {
+                f.write_fmt(format_args!("Error: Unique constraint failed {}", e))
+            }
+            Error::Io(e) => f.write_fmt(format_args!("Error: Io error {}", e)),
+            Error::NotFound => f.write_str("Error: Not found"),
+            Error::InternalServer => f.write_str("Error: Internal server error"),
+            Error::Multipart(e) => f.write_fmt(format_args!("Error: {}", e)),
+        }
+    }
+}
+
+impl std::error::Error for Error {
+    fn source(&self) -> Option<&(dyn ser::StdError + 'static)> {
+        None
+    }
+
+    fn description(&self) -> &str {
+        "description() is deprecated; use Display"
+    }
+
+    fn cause(&self) -> Option<&dyn ser::StdError> {
+        self.source()
+    }
 }
 
 impl IntoResponse for Error {
@@ -163,6 +177,10 @@ impl IntoResponse for Error {
             Error::Io(s) => (500, s),
             Error::NotFound => (404, "not found".into()),
             Error::InternalServer => (500, "internal server error".into()),
+            Error::Multipart(_s) => (
+                422,
+                "Unprocessable entity from multipart form request".into(),
+            ),
         };
         Response::builder()
             .status(status)
@@ -199,13 +217,10 @@ impl From<std::io::Error> for Error {
     }
 }
 
-#[macro_export]
-macro_rules! listen {
-    ($expr:expr) => {
-        fn main() {
-            serve!($expr);
-        }
-    };
+impl From<axum_extra::extract::multipart::MultipartError> for Error {
+    fn from(value: axum_extra::extract::multipart::MultipartError) -> Self {
+        Error::Multipart(value.body_text())
+    }
 }
 
 #[macro_export]
@@ -234,11 +249,4 @@ macro_rules! serve_static_files {
             }
         }
     };
-}
-
-#[cfg(test)]
-mod tests {
-    use ryde::*;
-
-    fn it_works() {}
 }

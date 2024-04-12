@@ -18,14 +18,28 @@ Open up your-project/src/main.rs in your favorite editor
 ```rust
 // src/main.rs
 use ryde::*;
+use std::sync::Arc;
 
-route!(
-    (get, "/", index),
-    (get, "/*files", files_handler) // serves the static files from the root ::1:3000/test.css, ::1:3000/app.js
+// define a routes fn
+// this is equivalent to
+
+/// fn routes() -> Router {
+/// Router::new()
+///     .route("/", get(index))
+///     .route("/*files", get(files_handler))
+/// }
+routes!(
+    ("/", get(index)),
+    ("/*files", get(files_handler)) // serves the static files from the root ::1:3000/test.css, ::1:3000/app.js
 );
 
-fn main() {
-    serve!("::1:3000");
+// embeds all files in the static/ folder
+// and serves them
+serve_static_files!("static", files_handler);
+
+#[main]
+async fn main() {
+    serve("::1:9001", routes()).await
 }
 
 async fn index() -> Response {
@@ -40,10 +54,6 @@ async fn index() -> Response {
         )
         .render()
 }
-
-// embeds all files in the static/ folder
-// and serves them
-serve_static_files!("static", files_handler);
 ```
 
 # A longer example
@@ -53,25 +63,33 @@ serve_static_files!("static", files_handler);
 use ryde::*;
 
 db!(
-    "create table if not exists todos (
+    (create_todos, "create table if not exists todos (
         id integer primary key,
         content text not null,
         created_at integer not null default(unixepoch())
-    )",
+    )"),
     (insert_todo, "insert into todos (content) values (?)"),
     (todos, "select * from todos order by created_at desc limit 30")
 );
 
-route!(
-    (get, "/", todos_index),
-    (post, "/todos", todos_create),
-    (get, "/*files", files_handler)
+routes!(
+    ("/", get(todos_index)),
+    ("/todos", get(todos_create)),
+    ("/*files", get(files_handler))
+    with Arc<AppState>
 );
+
+#[derive(Clone)]
+struct AppState {
+    some_state: String
+};
 
 serve_static_files!("static", files_handler);
 
-fn main() {
-    serve!("::1:3000")
+#[main]
+async fn main() {
+    create_todos().await;
+    serve("::1:9002", routes().with(Arc::new(AppState { some_state: "".into() }))).await
 }
 
 async fn todos_index() -> Result<Response> {

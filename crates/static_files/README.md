@@ -10,15 +10,15 @@ It will try to find the files starting from the root of your project: `CARGO_MAN
 ```rust
 use ryde::*;
 
+routes!(
+    ("/*files", get(files_handler))
+);
+
+serve_static_files!("static", files_handler);
+
 #[main]
 async fn main() {
-    serve!("localhost:3000", Routes)
-}
-
-#[router]
-enum Routes {
-    #[embed("/static/*file")]
-    StaticFiles
+    serve("localhost:3000", routes())
 }
 ```
 
@@ -29,7 +29,7 @@ fn render() -> String {
     ryde::render((
         doctype(),
         html((
-            head(render!(StaticFiles)),
+            head(render_static_files!()),
             body(),
         )),
     ))

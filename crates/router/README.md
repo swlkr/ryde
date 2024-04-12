@@ -1,76 +1,73 @@
 # router
 
-router is a rust enum router for axum that doesn't support nesting.
+router is a macro to make writing axum routes easier
 
 # Declare your routes
 
 ```rust
-use router::router;
+use ryde_router::{routes, url};
 
-#[router]
-pub enum Route {
-  #[get("/")]
-  Root,
-  #[get("/todos/:id/edit")]
-  EditTodo(i32)
-  #[put("/todos/:id")]
-  UpdateTodo(i32)
-}
+routes!(
+  ("/", get(root)),
+  ("/todos/:id/edit", get(edit_todo).put(update_todo))
+);
 ```
 
 It will complain about missing functions which you still have to write:
 
 ```rust
 async fn root() -> String {
-  Route::Root.to_string() // "/"
+  url!(root) // "/"
 }
 
 async fn edit_todo(Path(id): Path<i32>) -> String {
-  Route::EditTodo(id).to_string() // "/todos/:id/edit"
+  url!(edit_todo, id) // "/todos/:id/edit"
 }
 
 async fn update_todo(Path(id): Path<i32>) -> String {
-  Route::UpdateTodo(id).to_string() // "/todos/:id"
+  url!(update_todo, id) // "/todos/:id"
 }
 ```
 
 # Use it like this
 
 ```rust
+use tokio;
+use axum;
+
 #[tokio::main]
 async fn main() {
   let ip = "127.0.0.1:9001";
   let listener = tokio::net::TcpListener::bind(ip).await.unwrap();
-  let router = Route::router();
-  axum::serve(listener, router).await.unwrap();
+  axum::serve(listener, routes()).await.unwrap();
 }
 ```
 
 # Got state?
 
 ```rust
-use std::sync::Arc;
-use axum::extract::State;
+use tokio;
+use axum::{self, extract::State};
 
+#[derive(Clone)]
 struct AppState {
   count: u64
 }
 
-#[router(Arc<AppState>)]
-enum Routes {
-  #[get("/")]
-  Index
-}
+routes!(
+  ("/", get(index))
+  with Arc<AppState>
+);
 
 async fn index(State(_st): State<Arc<AppState>>) -> String {
-  Routes::Index.to_string()
+  url!(index)
 }
 
 #[tokio::main]
 async fn main() {
   let ip = "127.0.0.1:9001";
   let listener = tokio::net::TcpListener::bind(ip).await.unwrap();
-  let router = Routes::router().with_state(Arc::new(AppState { count: 0 }));
+  let router = routes().with_state(Arc::new(AppState { count: 0 }));
   axum::serve(listener, router).await.unwrap();
 }
 ```

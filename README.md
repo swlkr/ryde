@@ -18,20 +18,20 @@ Open up your-project/src/main.rs in your favorite editor
 ```rust
 // src/main.rs
 use ryde::*;
-use std::sync::Arc;
 
 // define a routes fn
-// this is equivalent to
-
-/// fn routes() -> Router {
-/// Router::new()
-///     .route("/", get(index))
-///     .route("/*files", get(files_handler))
-/// }
 routes!(
     ("/", get(index)),
     ("/*files", get(files_handler)) // serves the static files from the root ::1:3000/test.css, ::1:3000/app.js
 );
+
+// this is equivalent to
+
+// fn routes() -> Router {
+// Router::new()
+//     .route("/", get(index))
+//     .route("/*files", get(files_handler))
+// }
 
 // embeds all files in the static/ folder
 // and serves them
@@ -42,6 +42,7 @@ async fn main() {
     serve("::1:9001", routes()).await
 }
 
+// render some html and css
 async fn index() -> Response {
     document()
         .head((title("ryde with rust"), render_static_files!()))
@@ -63,13 +64,13 @@ async fn index() -> Response {
 use ryde::*;
 
 db!(
-    (create_todos, "create table if not exists todos (
+    create_todos = "create table if not exists todos (
         id integer primary key,
         content text not null,
         created_at integer not null default(unixepoch())
-    )"),
-    (insert_todo, "insert into todos (content) values (?)"),
-    (todos, "select * from todos order by created_at desc limit 30")
+    )",
+    insert_todo = "insert into todos (content) values (?)",
+    todos = "select * from todos order by created_at desc limit 30"
 );
 
 routes!(

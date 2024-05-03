@@ -117,7 +117,7 @@ pub fn static_files_macro(input: DeriveInput) -> Result<TokenStream> {
             pub fn render() -> ryde::Component {
                 html! {
                     <>
-                        #(#rendered,)*
+                        #(#rendered)*
                     </>
                 }
             }

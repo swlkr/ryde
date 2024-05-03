@@ -4,7 +4,7 @@ mod db;
 mod router;
 mod html;
 
-use axum;
+pub use axum;
 pub use axum::extract::*;
 pub use axum::http;
 pub use axum::http::header::*;
@@ -63,8 +63,8 @@ pub fn redirect(s: String) -> Response {
 
 #[macro_export]
 macro_rules! redirect_to {
-    ($ident:ident) => {
-        redirect(url!($ident))
+    ($($ident:ident),+) => {
+        redirect(url!($($ident),+))
     }
 }
 

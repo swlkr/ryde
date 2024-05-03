@@ -1,6 +1,6 @@
 [package]
 name = "ryde"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 license = "MIT"
 homepage = "https://github.com/swlkr/ryde"
@@ -14,7 +14,7 @@ axum-extra = { version = "0.9", features = ["cookie", "typed-header", "multipart
 itoa = "1.0"
 http-body-util = "0.1"
 rusqlite = "0.31"
-ryde_macros = { path = "ryde_macros" }
+ryde_macros = { path = "ryde_macros", version = "0.1.0" }
 ryu = "1.0"
 seq-macro = "0.3"
 serde = { version = "1", features = ["derive"] }

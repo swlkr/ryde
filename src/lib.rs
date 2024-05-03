@@ -1,5 +1,10 @@
 extern crate self as ryde;
-pub use axum;
+
+mod db;
+mod router;
+mod html;
+
+use axum;
 pub use axum::extract::*;
 pub use axum::http;
 pub use axum::http::header::*;
@@ -9,13 +14,10 @@ pub use axum::*;
 pub use axum_extra::extract::*;
 pub use axum_extra::headers;
 pub use cookie::Cookie;
-pub use ryde_css::css;
-pub use ryde_db;
-pub use ryde_db::{connection, db, rusqlite, tokio_rusqlite, Connection};
-pub use ryde_html::{self as html, *};
-pub use ryde_router;
-pub use ryde_router::{routes, url};
-pub use ryde_static_files::{self as static_files, StaticFiles};
+pub use db::{connection, db, rusqlite, tokio_rusqlite, Connection};
+pub use html::{Component, Render, Elements, escape, html};
+pub use router::{routes, url};
+pub use ryde_macros::StaticFiles;
 pub use serde;
 pub use serde::*;
 pub use std::fmt::Display;
@@ -42,68 +44,28 @@ macro_rules! render_static_files {
     }};
 }
 
-pub type Html = axum::response::Html<String>;
+pub type Html = Component;
 
-pub struct Document {
-    head: Element,
-    body: Element,
-}
-
-impl Document {
-    fn new() -> Self {
-        Self {
-            head: head(()),
-            body: body(()),
-        }
-    }
-
-    pub fn head(mut self, children: impl Render + 'static) -> Self {
-        self.head = anon_element(children);
-        self
-    }
-
-    pub fn body(mut self, children: impl Render + 'static) -> Self {
-        let styles = styles(&children);
-        let inner_head = html::render(self.head).replace("<>", "").into();
-        self.head = head((Raw(inner_head), style(Raw(styles))));
-        self.body = body(children);
-        self
-    }
-
-    pub fn render(self) -> Response {
-        Html(html::render((doctype(), html((self.head, self.body))))).into_response()
+impl IntoResponse for Html {
+    fn into_response(self) -> Response {
+        axum::response::Html(self.html).into_response()
     }
 }
 
-pub fn document() -> Document {
-    Document::new()
-}
-
-pub fn render(element: Element) -> Html {
-    Html(html::render(element))
-}
-
-pub fn x_redirect(route: impl Display) -> Response {
-    let headers = [("x-location", route.to_string())];
-    (http::StatusCode::OK, headers).into_response()
-}
-
-pub fn redirect_to(route: impl Display) -> Response {
+pub fn redirect(s: String) -> Response {
     let headers = [
         (SET_COOKIE, format!("flash={}", "")),
-        (LOCATION, route.to_string()),
+        (LOCATION, s.into()),
     ];
 
     (http::StatusCode::SEE_OTHER, headers).into_response()
 }
 
-pub fn redirect_with_flash(route: impl Display, message: String) -> Response {
-    let headers = [
-        (SET_COOKIE, format!("flash={}", message)),
-        (LOCATION, route.to_string()),
-    ];
-
-    (http::StatusCode::SEE_OTHER, headers).into_response()
+#[macro_export]
+macro_rules! redirect_to {
+    ($ident:ident) => {
+        redirect(url!($ident))
+    }
 }
 
 #[macro_export]
@@ -137,7 +99,7 @@ pub enum Error {
 }
 
 impl std::fmt::Display for Error {
-    fn fmt(&self, f: &mut __private::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Error::DatabaseConnectionClosed => f.write_str("Error: Database connection closed"),
             Error::DatabaseClose => f.write_str("Error: Database was already closed"),
@@ -224,13 +186,13 @@ impl From<axum_extra::extract::multipart::MultipartError> for Error {
 }
 
 #[macro_export]
-macro_rules! serve_static_files {
+macro_rules! embed_static_files {
     ($expr:expr) => {
-        serve_static_files!($expr, files_handler);
+        embed_static_files!($expr, get_files);
     };
 
     ($expr:expr, $ident:ident) => {
-        #[derive(static_files::StaticFiles)]
+        #[derive(ryde::StaticFiles)]
         #[folder($expr)]
         pub struct Assets;
 

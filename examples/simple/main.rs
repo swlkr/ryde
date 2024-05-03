@@ -1,12 +1,12 @@
 use ryde::*;
 
-routes!(("/", get(index)));
+routes!(("/", get(get_slash)));
 
 #[main]
 async fn main() {
     serve("::1:9001", routes()).await
 }
 
-async fn index() -> String {
-    url!(index)
+async fn get_slash() -> String {
+    url!(get_slash)
 }

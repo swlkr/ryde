@@ -1,22 +1,12 @@
-use proc_macro::TokenStream;
-use proc_macro2::{Span, TokenStream as TokenStream2};
-use quote::{quote, ToTokens};
+use proc_macro2::{Span, TokenStream};
+use quote::quote;
 use std::collections::HashSet;
 use syn::{
-    parse::Parse, parse_macro_input, punctuated::Punctuated, Expr, ExprCall, ExprLit,
-    ExprMethodCall, ExprPath, ExprTuple, Ident, Lit, Result, Token,
+    parse::Parse, punctuated::Punctuated, Expr, ExprCall, ExprLit, ExprMethodCall, ExprPath,
+    ExprTuple, Ident, Lit, Result, Token,
 };
 
-#[proc_macro]
-pub fn routes(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as StateRouter);
-    match routes_macro(input) {
-        Ok(s) => s.to_token_stream().into(),
-        Err(e) => e.to_compile_error().into(),
-    }
-}
-
-fn routes_macro(input: StateRouter) -> Result<TokenStream2> {
+pub fn routes_macro(input: StateRouter) -> Result<TokenStream> {
     let parts: Vec<(&Lit, Vec<(Ident, Ident)>)> = input
         .routes
         .iter()
@@ -176,16 +166,7 @@ fn handler(args: &Punctuated<Expr, syn::token::Comma>) -> Ident {
     }
 }
 
-#[proc_macro]
-pub fn url(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input with Punctuated::<Expr, Token![,]>::parse_terminated);
-    match url_macro(input) {
-        Ok(s) => s.to_token_stream().into(),
-        Err(e) => e.to_compile_error().into(),
-    }
-}
-
-fn url_macro(input: Punctuated<Expr, Token![,]>) -> Result<TokenStream2> {
+pub fn url_macro(input: Punctuated<Expr, Token![,]>) -> Result<TokenStream> {
     let Some(Expr::Path(ExprPath { path, .. })) = input.first() else {
         panic!("first argument should be an handler fn name");
     };
@@ -200,7 +181,7 @@ fn url_macro(input: Punctuated<Expr, Token![,]>) -> Result<TokenStream2> {
     })
 }
 
-struct StateRouter {
+pub struct StateRouter {
     routes: Punctuated<ExprTuple, Token![,]>,
     state: Option<syn::TypePath>,
 }

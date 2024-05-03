@@ -1,28 +1,15 @@
-use proc_macro::TokenStream;
-use proc_macro2::{Ident, TokenStream as TokenStream2};
-use quote::{quote, ToTokens};
+use proc_macro2::{Ident, Span, TokenStream};
+use quote::quote;
 use sqlparser::ast::{
     AlterTableOperation, Assignment, Query, Select, SelectItem, SetExpr, TableFactor,
     TableWithJoins,
 };
-use sqlparser::parser::Parser;
-use sqlparser::{ast::Statement, dialect::SQLiteDialect};
+use sqlparser::{ast::Statement, dialect::SQLiteDialect, parser::Parser};
 use std::collections::HashSet;
-use syn::{
-    parse_macro_input, punctuated::Punctuated, Expr, ExprAssign, ExprLit, Lit, Result, Token,
-};
+use syn::LitStr;
+use syn::{punctuated::Punctuated, Expr, ExprAssign, ExprLit, Lit, Result, Token};
 
-#[proc_macro]
-pub fn db(input: TokenStream) -> TokenStream {
-    let input =
-        parse_macro_input!(input with Punctuated::<ExprAssign, Token![,]>::parse_terminated);
-    match db_macro(input) {
-        Ok(s) => s.to_token_stream().into(),
-        Err(e) => e.to_compile_error().into(),
-    }
-}
-
-fn db_macro(exprs: Punctuated<ExprAssign, Token![,]>) -> Result<TokenStream2> {
+pub fn db_macro(exprs: Punctuated<ExprAssign, Token![,]>) -> Result<TokenStream> {
     let input = to_input(exprs);
     let output = to_output(input);
     let source = to_tokens(output);
@@ -46,13 +33,13 @@ fn to_output(input: Input) -> Output {
     Output { stmts }
 }
 
-fn to_tokens(output: Output) -> TokenStream2 {
-    let tokens: Vec<TokenStream2> = output.stmts.into_iter().map(stmt_tokens).collect();
+fn to_tokens(output: Output) -> TokenStream {
+    let tokens: Vec<TokenStream> = output.stmts.into_iter().map(stmt_tokens).collect();
 
     quote! { #(#tokens)* }
 }
 
-fn stmt_tokens(output: Stmt) -> TokenStream2 {
+fn stmt_tokens(output: Stmt) -> TokenStream {
     match output {
         Stmt::ExecuteBatch { ident, sql } => quote! {
             pub async fn #ident() -> tokio_rusqlite::Result<()> {
@@ -69,8 +56,8 @@ fn stmt_tokens(output: Stmt) -> TokenStream2 {
             sql,
             in_cols,
         } => {
-            let fn_args: Vec<TokenStream2> = in_cols.iter().map(fn_tokens).collect();
-            let param_fields: Vec<TokenStream2> = in_cols.iter().map(param_tokens).collect();
+            let fn_args: Vec<TokenStream> = in_cols.iter().map(fn_tokens).collect();
+            let param_fields: Vec<TokenStream> = in_cols.iter().map(param_tokens).collect();
 
             quote! {
                 pub async fn #ident(#(#fn_args,)*) -> tokio_rusqlite::Result<usize> {
@@ -89,8 +76,8 @@ fn stmt_tokens(output: Stmt) -> TokenStream2 {
             sql,
             in_cols,
         } => {
-            let fn_args: Vec<TokenStream2> = in_cols.iter().map(fn_tokens).collect();
-            let param_fields: Vec<TokenStream2> = in_cols.iter().map(param_tokens).collect();
+            let fn_args: Vec<TokenStream> = in_cols.iter().map(fn_tokens).collect();
+            let param_fields: Vec<TokenStream> = in_cols.iter().map(param_tokens).collect();
 
             quote! {
                  pub async fn #ident(#(#fn_args,)*) -> tokio_rusqlite::Result<i64> {
@@ -122,10 +109,18 @@ fn stmt_tokens(output: Stmt) -> TokenStream2 {
             ret,
         } => {
             let struct_ident = struct_ident(&ident);
-            let struct_fields: Vec<TokenStream2> = out_cols.iter().map(column_tokens).collect();
-            let instance_fields: Vec<TokenStream2> = out_cols.iter().map(row_tokens).collect();
-            let fn_args: Vec<TokenStream2> = in_cols.iter().map(fn_tokens).collect();
-            let param_fields: Vec<TokenStream2> = in_cols.iter().map(param_tokens).collect();
+            let name_struct_ident = Ident::new(
+                &format!("{}Names", &struct_ident.to_string()),
+                Span::call_site(),
+            );
+            let name_struct_fields: Vec<TokenStream> =
+                in_cols.iter().map(name_struct_tokens).collect();
+            let name_struct_self_fields: Vec<TokenStream> =
+                in_cols.iter().map(name_struct_self_tokens).collect();
+            let struct_fields: Vec<TokenStream> = out_cols.iter().map(column_tokens).collect();
+            let instance_fields: Vec<TokenStream> = out_cols.iter().map(row_tokens).collect();
+            let fn_args: Vec<TokenStream> = in_cols.iter().map(fn_tokens).collect();
+            let param_fields: Vec<TokenStream> = in_cols.iter().map(param_tokens).collect();
             let (return_statement, return_type) = match ret {
                 QueryReturn::Row => (
                     quote! {
@@ -155,9 +150,15 @@ fn stmt_tokens(output: Stmt) -> TokenStream2 {
                     pub fn new(row: &tokio_rusqlite::Row<'_>) -> rusqlite::Result<Self> {
                         Ok(Self { #(#instance_fields,)* ..Default::default() })
                     }
+
+                    pub fn names() -> #name_struct_ident {
+                        #name_struct_ident { #(#name_struct_self_fields,)* }
+                    }
                 }
 
-                 pub async fn #ident(#(#fn_args,)*) -> tokio_rusqlite::Result<#return_type> {
+                pub struct #name_struct_ident { #(#name_struct_fields,)* }
+
+                pub async fn #ident(#(#fn_args,)*) -> tokio_rusqlite::Result<#return_type> {
                     connection()
                         .await
                         .call(move |conn| {
@@ -755,7 +756,7 @@ fn not_null(data_type: &DataType, value: &Vec<sqlparser::ast::ColumnOptionDef>) 
     })
 }
 
-fn data_type_tokens(data_type: &DataType) -> TokenStream2 {
+fn data_type_tokens(data_type: &DataType) -> TokenStream {
     match data_type {
         DataType::Integer => quote!(i64),
         DataType::Real => quote!(f64),
@@ -769,26 +770,39 @@ fn data_type_tokens(data_type: &DataType) -> TokenStream2 {
     }
 }
 
-fn column_tokens(column: &Column) -> TokenStream2 {
+fn column_tokens(column: &Column) -> TokenStream {
     let data_type = data_type_tokens(&column.data_type);
     let name = syn::Ident::new(&column.name, proc_macro2::Span::call_site());
 
     quote!(#name: #data_type)
 }
 
-fn param_tokens(column: &Column) -> TokenStream2 {
+fn name_struct_tokens(column: &Column) -> TokenStream {
+    let name = syn::Ident::new(&column.name, proc_macro2::Span::call_site());
+
+    quote!(#name: &'static str)
+}
+
+fn name_struct_self_tokens(column: &Column) -> TokenStream {
+    let name = syn::Ident::new(&column.name, proc_macro2::Span::call_site());
+    let value = LitStr::new(&name.to_string(), Span::call_site());
+
+    quote!(#name: #value)
+}
+
+fn param_tokens(column: &Column) -> TokenStream {
     let name = syn::Ident::new(&column.name, proc_macro2::Span::call_site());
     quote!(#name)
 }
 
-fn row_tokens(column: &Column) -> TokenStream2 {
+fn row_tokens(column: &Column) -> TokenStream {
     let lit_str = &column.name;
     let ident = syn::Ident::new(&lit_str, proc_macro2::Span::call_site());
 
     quote!(#ident: row.get(#lit_str)?)
 }
 
-fn fn_tokens(column: &Column) -> TokenStream2 {
+fn fn_tokens(column: &Column) -> TokenStream {
     let lit_str = &column.name;
     let ident = syn::Ident::new(&lit_str, proc_macro2::Span::call_site());
     let fn_type = fn_type(&column.data_type);
@@ -796,7 +810,7 @@ fn fn_tokens(column: &Column) -> TokenStream2 {
     quote!(#ident: #fn_type)
 }
 
-fn fn_type(data_type: &DataType) -> TokenStream2 {
+fn fn_type(data_type: &DataType) -> TokenStream {
     match data_type {
         DataType::Integer => quote!(i64),
         DataType::Real => quote!(f64),

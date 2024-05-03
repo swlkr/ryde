@@ -16,51 +16,39 @@ mkdir static
 Open up your-project/src/main.rs in your favorite editor
 
 ```rust
-// src/main.rs
 use ryde::*;
 
-// define a routes fn
 routes!(
-    ("/", get(index)),
-    ("/*files", get(files_handler)) // serves the static files from the root ::1:3000/test.css, ::1:3000/app.js
+    ("/", get(get_slash)),
+    ("/*files", get(get_files)) // serves the static files from the root ::1:3000/test.css, ::1:3000/app.js
 );
 
-// this is equivalent to
-
-// fn routes() -> Router {
-// Router::new()
-//     .route("/", get(index))
-//     .route("/*files", get(files_handler))
-// }
-
-// embeds all files in the static/ folder
-// and serves them
-serve_static_files!("static", files_handler);
+embed_static_files!("static");
 
 #[main]
 async fn main() {
     serve("::1:9001", routes()).await
 }
 
-// render some html and css
-async fn index() -> Response {
-    document()
-        .head((title("ryde with rust"), render_static_files!()))
-        .body(
-            h1("ryde with rust")
-                .css(css!(
-                    "font-size: 1.5rem",
-                    "line-height: 2rem"
-                ))
-        )
-        .render()
+async fn index() -> Html {
+    html! {
+        <!DOCTYPE html>
+        <html lang="en">
+            <head>
+                <title>ryde with rust</title>
+                {render_static_files!("static")}
+            </head>
+            <body>
+                <h1 class="text-2xl">ryde with rust</h1>
+            </body>
+        </html>
+    }
 }
 ```
 
 # A longer example
 
 ```rust
-// src/main.rs
 use ryde::*;
 
 db!(
@@ -74,8 +62,8 @@ db!(
 );
 
 routes!(
-    ("/", get(todos_index)),
-    ("/todos", get(todos_create)),
+    ("/", get(get_slash)),
+    ("/todos", get(get_todos).post(post_todos)),
     ("/*files", get(files_handler))
     with Arc<AppState>
 );
@@ -85,57 +73,89 @@ struct AppState {
     some_state: String
 };
 
-serve_static_files!("static", files_handler);
+embed_static_files!("static", files_handler);
 
 #[main]
 async fn main() {
     create_todos().await;
-    serve("::1:9002", routes().with(Arc::new(AppState { some_state: "".into() }))).await
+    let routes = routes().with(Arc::new(AppState { some_state: "".into() }));
+
+    serve("::1:9002", routes).await
 }
 
-async fn todos_index() -> Result<Response> {
+async fn get_slash() -> Html {
+    html! { 
+        <View>
+            <h1>ryde with rust</h1>
+            <a href={url!(get_todos)}>check your todos</a>
+        </View>
+    }
+}
+
+async fn get_todos() -> Result<Html> {
     let todos = todos().await?;
-    Ok(render_todos_index(todos))
+
+    Ok(html! { 
+        <View>
+            <TodoList />
+        </View>
+    })
 }
 
-async fn todos_create(Form(todo): Form<InsertTodo>) -> Result<Response> {
+async fn post_todos(Form(todo): Form<InsertTodo>) -> Result<Html> {
     let _todo = insert_todo(todo.content).await?;
-    Ok(redirect_to(Route::TodosIndex))
+
+    Ok(redirect_to!(get_todos))
 }
 
-fn render_todos_index(todos: Vec<Todos>) -> Response {
-    render(div((
-        h1("todos").css(css!(
-            "font-size: 1.5rem",
-            "line-height: 2rem",
-        )),
-        ul(todos.iter().map(|todo| li(todo.content.clone())).collect::<Vec<_>>()),
-        todo_form()
-    )).css(css!(
-        "color: rgb(3 7 18)",
-        "dark:color: rgb(245 158 11)")))
+fn Form(action: &str, elements: Elements) -> Component {
+    html! {
+        <form method="post" action={action}>
+            {elements}
+        </form>
+    }
 }
 
-fn todo_form() -> Element {
-    form((
-        input().type_("text").name("content"),
-        input().type_("submit").name("save")
-    ))
-    .method("POST")
-    .action(Route::TodosCreate)
+fn TodoForm() -> Component {
+    let names = cols!(insert_todo);
+
+    html! {
+        <Form action={url!(todos_create)}>
+            <input type="text" name={names.content} />
+            <input type="submit" name="save" />
+        </Form>
+    }
 }
 
-fn render(element: Element) -> Response {
-    document()
-        .head(render_static_files!())
-        .body(
-            div(element)
-                .css(css!(
-                    "background: rgb(243 244 246)",
-                    "dark:background: rgb(3 7 18)"
-                ))
-        )
-        .render()
+fn TodoList(todos: Vec<Todos>) -> Component {
+    let todos = map!(todos, TodoListItem);
+
+    html! {
+        <div class="text-black dark:text-white">
+            <h1 class="text-2xl">todos</h1>
+            <ul>{todos}</ul>
+            <TodoForm />
+        </div>
+    }
+}
+
+fn TodoListItem(todo: Todos) -> Component {
+    html! { <li>{&todo.content}</li> }
+}
+
+fn View(elements: Elements) -> Component {
+    html! {
+        <!DOCTYPE html>
+        <html>
+            <head>
+                <title>ryde with rust</title>
+                {render_static_files!()}
+            </head>
+            <body>
+                <div class="text-white bg-orange-500 dark:bg-orange-700">{elements}</div>
+            </body>
+        </html>
+    }
 }
 ```
 

@@ -1,21 +1,8 @@
-use proc_macro::TokenStream;
-use proc_macro2::{Span, TokenStream as TokenStream2};
-use quote::{quote, ToTokens};
-use syn::{
-    Data, DeriveInput, Ident, LitStr,
-    Result, parse_macro_input,
-};
+use proc_macro2::{Span, TokenStream};
+use quote::quote;
+use syn::{Data, DeriveInput, Ident, LitStr, Result};
 
-#[proc_macro_derive(StaticFiles, attributes(folder))]
-pub fn static_files(s: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(s as DeriveInput);
-    match static_files_macro(input) {
-        Ok(s) => s.to_token_stream().into(),
-        Err(e) => e.to_compile_error().into(),
-    }
-}
-
-fn static_files_macro(input: DeriveInput) -> Result<TokenStream2> {
+pub fn static_files_macro(input: DeriveInput) -> Result<TokenStream> {
     let struct_ident = input.ident;
     let Data::Struct(_) = input.data else {
         panic!("Only structs are supported");
@@ -23,7 +10,7 @@ fn static_files_macro(input: DeriveInput) -> Result<TokenStream2> {
     let Some(path) = input
         .attrs
         .iter()
-        .filter(|attr| attr.path.is_ident("folder"))
+        .filter(|attr| attr.path().is_ident("folder"))
         .filter_map(|attr| attr.parse_args::<LitStr>().ok())
         .last()
     else {
@@ -43,7 +30,13 @@ fn static_files_macro(input: DeriveInput) -> Result<TokenStream2> {
         .map(|dir_entry| dir_entry.path())
         .collect::<Vec<_>>();
     let consts = files.iter().map(|path| {
-        let ident_name = path.clone().with_extension("").file_name().unwrap().to_string_lossy().to_uppercase();
+        let ident_name = path
+            .clone()
+            .with_extension("")
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .to_uppercase();
         let bytes_ident = Ident::new(&format!("{}_BYTES", &ident_name), Span::call_site());
         let hash_ident = Ident::new(&format!("{}_HASH", &ident_name), Span::call_site());
         let filename = path.file_name().unwrap().to_string_lossy();
@@ -60,8 +53,12 @@ fn static_files_macro(input: DeriveInput) -> Result<TokenStream2> {
         if let Some(ext) = path.extension() {
             if let Some(ext) = ext.to_str() {
                 match ext {
-                    "js" => quote! { format!("<script src=\"/{}?v={}\" defer></script>", #filename, Self::#hash_ident) },
-                    "css" => quote! { format!("<link rel=stylesheet href=\"/{}?v={}\" />", #filename, Self::#hash_ident) },
+                    "js" => quote! {
+                        <script src={format!("/{}?v={}", #filename, Self::#hash_ident)} defer></script>
+                    },
+                    "css" => quote! {
+                        <link rel="stylesheet" href={format!("/{}?v={}", #filename, Self::#hash_ident)} />
+                    },
                     _ => quote! {}
                 }
             } else {
@@ -69,14 +66,17 @@ fn static_files_macro(input: DeriveInput) -> Result<TokenStream2> {
             }
         } else {
             quote! {}
-        }            
+        }
     });
     let get_matches = files.iter().map(|path| {
-        let ident_name = path.clone().with_extension("").file_name().unwrap().to_string_lossy().to_uppercase();
-        let bytes_ident = Ident::new(
-            &format!("{}_BYTES", &ident_name),
-            Span::call_site(),
-        );
+        let ident_name = path
+            .clone()
+            .with_extension("")
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .to_uppercase();
+        let bytes_ident = Ident::new(&format!("{}_BYTES", &ident_name), Span::call_site());
         let content_type = if let Some(ext) = path.extension() {
             if let Some(ext) = ext.to_str() {
                 match ext {
@@ -91,7 +91,11 @@ fn static_files_macro(input: DeriveInput) -> Result<TokenStream2> {
         } else {
             "application/octet-stream"
         };
-        let filename = format!("{}{}", std::path::MAIN_SEPARATOR_STR, path.file_name().unwrap().to_string_lossy());
+        let filename = format!(
+            "{}{}",
+            std::path::MAIN_SEPARATOR_STR,
+            path.file_name().unwrap().to_string_lossy()
+        );
         quote! {
             #filename => {
                 Some((#content_type, Self::#bytes_ident))
@@ -110,9 +114,12 @@ fn static_files_macro(input: DeriveInput) -> Result<TokenStream2> {
                 }
             }
 
-            pub fn render() -> html::Raw {
-                let v: Vec<String> = vec![#(#rendered,)*];
-                html::Raw(v.join(""))
+            pub fn render() -> ryde::Component {
+                html! {
+                    <>
+                        #(#rendered,)*
+                    </>
+                }
             }
 
             pub const fn hash(bytes: &[u8]) -> u64 {

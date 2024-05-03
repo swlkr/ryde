@@ -43,7 +43,7 @@ checksum = "c980ee35e870bd1a4d2c8294d4c04d0499e67bca1e4b5cefcc693c2fa00caea9"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.49",
+ "syn",
 ]
 
 [[package]]
@@ -141,7 +141,7 @@ dependencies = [
  "heck",
  "proc-macro2",
  "quote",
- "syn 2.0.49",
+ "syn",
 ]
 
 [[package]]
@@ -665,7 +665,7 @@ checksum = "266c042b60c9c76b8d53061e52b2e0d1116abc57cefc8c5cd671619a56ac3690"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.49",
+ "syn",
 ]
 
 [[package]]
@@ -701,7 +701,6 @@ dependencies = [
  "proc-macro-error-attr",
  "proc-macro2",
  "quote",
- "syn 1.0.109",
  "version_check",
 ]
 
@@ -726,12 +725,39 @@ dependencies = [
 ]
 
 [[package]]
+name = "proc-macro2-diagnostics"
+version = "0.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "af066a9c399a26e020ada66a034357a868728e72cd426f3adcd35f80d88d88c8"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+ "version_check",
+ "yansi",
+]
+
+[[package]]
 name = "quote"
 version = "1.0.35"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "291ec9ab5efd934aaf503a6466c5d5251535d108ee747472c3977cc5acc868ef"
 dependencies = [
  "proc-macro2",
+]
+
+[[package]]
+name = "rstml"
+version = "0.11.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fe542870b8f59dd45ad11d382e5339c9a1047cde059be136a7016095bbdefa77"
+dependencies = [
+ "proc-macro2",
+ "proc-macro2-diagnostics",
+ "quote",
+ "syn",
+ "syn_derive",
+ "thiserror",
 ]
 
 [[package]]
@@ -762,104 +788,31 @@ checksum = "7ffc183a10b4478d04cbbbfc96d0873219d962dd5accaff2ffbd4ceb7df837f4"
 
 [[package]]
 name = "ryde"
-version = "0.1.3"
+version = "0.2.0"
 dependencies = [
  "axum",
  "axum-extra",
- "ryde_css",
- "ryde_db",
- "ryde_html",
- "ryde_router",
- "ryde_static_files",
- "serde",
- "tokio",
-]
-
-[[package]]
-name = "ryde_css"
-version = "0.1.0"
-dependencies = [
- "ryde_css_macros",
-]
-
-[[package]]
-name = "ryde_css_macros"
-version = "0.1.1"
-dependencies = [
- "proc-macro-error",
- "proc-macro2",
- "quote",
- "syn 1.0.109",
-]
-
-[[package]]
-name = "ryde_db"
-version = "0.1.1"
-dependencies = [
+ "http-body-util",
+ "itoa",
  "rusqlite",
- "ryde_db_macros",
+ "ryde_macros",
+ "ryu",
+ "seq-macro",
  "serde",
  "tokio",
  "tokio-rusqlite",
-]
-
-[[package]]
-name = "ryde_db_macros"
-version = "0.1.3"
-dependencies = [
- "proc-macro-error",
- "proc-macro2",
- "quote",
- "sqlparser",
- "syn 1.0.109",
-]
-
-[[package]]
-name = "ryde_html"
-version = "0.2.1"
-dependencies = [
- "axum-core",
- "seq-macro",
-]
-
-[[package]]
-name = "ryde_router"
-version = "0.1.1"
-dependencies = [
- "axum",
- "http-body-util",
- "ryde_html",
- "ryde_router_macros",
- "serde",
- "tokio",
  "tower",
 ]
 
 [[package]]
-name = "ryde_router_macros"
-version = "0.1.2"
-dependencies = [
- "proc-macro-error",
- "proc-macro2",
- "quote",
- "syn 2.0.49",
-]
-
-[[package]]
-name = "ryde_static_files"
+name = "ryde_macros"
 version = "0.1.0"
 dependencies = [
- "ryde_static_files_macros",
-]
-
-[[package]]
-name = "ryde_static_files_macros"
-version = "0.1.0"
-dependencies = [
- "proc-macro-error",
  "proc-macro2",
  "quote",
- "syn 1.0.109",
+ "rstml",
+ "sqlparser",
+ "syn",
 ]
 
 [[package]]
@@ -891,7 +844,7 @@ checksum = "7eb0b34b42edc17f6b7cac84a52a1c5f0e1bb2227e997ca9011ea3dd34e8610b"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.49",
+ "syn",
 ]
 
 [[package]]
@@ -980,17 +933,6 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "1.0.109"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "72b64191b275b66ffe2469e8af2c1cfe3bafa67b529ead792a6d0160888b4237"
-dependencies = [
- "proc-macro2",
- "quote",
- "unicode-ident",
-]
-
-[[package]]
-name = "syn"
 version = "2.0.49"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "915aea9e586f80826ee59f8453c1101f9d1c4b3964cd2460185ee8e299ada496"
@@ -1001,10 +943,42 @@ dependencies = [
 ]
 
 [[package]]
+name = "syn_derive"
+version = "0.1.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1329189c02ff984e9736652b1631330da25eaa6bc639089ed4915d25446cbe7b"
+dependencies = [
+ "proc-macro-error",
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "sync_wrapper"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2047c6ded9c721764247e62cd3b03c09ffc529b2ba5b10ec482ae507a4a70160"
+
+[[package]]
+name = "thiserror"
+version = "1.0.59"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f0126ad08bff79f29fc3ae6a55cc72352056dfff61e3ff8bb7129476d44b23aa"
+dependencies = [
+ "thiserror-impl",
+]
+
+[[package]]
+name = "thiserror-impl"
+version = "1.0.59"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d1cd413b5d558b4c5bf3680e324a6fa5014e7b7c067a51e69dbdf47eb7148b66"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
 
 [[package]]
 name = "time"
@@ -1062,7 +1036,7 @@ checksum = "5b8a1e28f2deaa14e508979454cb3a223b10b938b45af148bc0986de36f1923b"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.49",
+ "syn",
 ]
 
 [[package]]
@@ -1234,6 +1208,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed94fce61571a4006852b7389a063ab983c02eb1bb37b47f8272ce92d06d9538"
 
 [[package]]
+name = "yansi"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cfe53a6657fd280eaa890a3bc59152892ffa3e30101319d168b781ed6529b049"
+
+[[package]]
 name = "zerocopy"
 version = "0.7.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1250,5 +1230,5 @@ checksum = "9ce1b18ccd8e73a9321186f97e46f9f04b778851177567b1975109d26a08d2a6"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.49",
+ "syn",
 ]

@@ -1,8 +1,7 @@
 use std::sync::OnceLock;
 
 pub use rusqlite;
-pub use ryde_db_macros::db;
-pub use serde::{self, Deserialize, Serialize};
+pub use ryde_macros::db;
 pub use tokio_rusqlite::{self, Connection};
 extern crate self as ryde_db;
 
@@ -35,6 +34,7 @@ pub async fn connection() -> &'static Connection {
 
 #[cfg(test)]
 mod tests {
+    pub use serde::{self, Deserialize, Serialize};
     use super::*;
     use tokio::test;
 
@@ -117,3 +117,4 @@ mod tests {
         assert_eq!(post_count, 0);
     }
 }
+

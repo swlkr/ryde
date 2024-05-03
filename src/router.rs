@@ -1,5 +1,6 @@
-pub use ryde_router_macros::{routes, url};
-extern crate self as ryde_router;
+extern crate self as router;
+
+pub use ryde_macros::{routes, url};
 
 #[cfg(test)]
 mod tests {
@@ -138,3 +139,4 @@ mod tests {
         )
     }
 }
+

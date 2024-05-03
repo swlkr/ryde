@@ -1,8 +1,8 @@
 use ryde::*;
 
-routes!(("/*files", get(files_handler)));
+routes!(("/*files", get(get_files)));
 
-serve_static_files!("examples/static_files/static", files_handler);
+embed_static_files!("examples/static_files/static");
 
 #[main]
 async fn main() {

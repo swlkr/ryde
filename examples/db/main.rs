@@ -1,3 +1,5 @@
+#![allow(non_snake_case)]
+
 use ryde::*;
 
 db!(
@@ -16,116 +18,147 @@ db!(
 );
 
 routes!(
-    ("/", get(index)),
-    ("/todos", post(todos_create)),
-    ("/todos/:id/edit", get(todos_edit).post(todos_update)),
-    ("/todos/:id/delete", post(todos_delete))
+    ("/", get(get_slash)),
+    ("/todos", post(post_todos)),
+    ("/todos/:id/edit", get(get_todos_edit).post(post_todos_edit)),
+    ("/todos/:id/delete", post(post_todos_delete))
 );
 
 #[main]
 async fn main() {
     create_todos().await.unwrap();
     create_todos_content_ix().await.unwrap();
-    serve("::1:3000", routes()).await;
+
+    serve("::1:9001", routes()).await
 }
 
-async fn index() -> Result<Response> {
+async fn get_slash() -> Result<Html> {
     let todos = todos().await?;
 
-    Ok(render(index_view("", todos)))
+    Ok(html! {
+        <View>
+            <GetSlash msg="" todos=todos/>
+        </View>
+    })
 }
 
-async fn todos_create(Form(todo): Form<InsertTodo>) -> Result<Response> {
+async fn post_todos(Form(todo): Form<InsertTodo>) -> Result<Response> {
     let result = insert_todo(todo.content).await;
 
     let res = match is_unique!(result)? {
-        true => redirect_to(url!(index)),
+        true => redirect_to!(get_slash),
         false => {
             let todos = todos().await?;
-            render(index_view("todo already exists", todos))
+            html! {
+                <View>
+                    <GetSlash msg="todos already exists" todos=todos/>
+                </View>
+            }.into_response()
         }
     };
 
     Ok(res)
 }
 
-async fn todos_edit(Path(id): Path<i64>) -> Result<Response> {
-    let todo = todo(id).await?;
-    Ok(render(div((h1("edit todo"), todo_form(todo)))))
+async fn get_todos_edit(Path(id): Path<i64>) -> Result<Html> {
+    let todo = todo(id).await?.ok_or(Error::NotFound)?;
+
+    Ok(html! {
+        <View>
+            <h1>Edit todo</h1>
+            <EditTodoForm todo=&todo/>
+        </View>
+    })
 }
 
-async fn todos_update(Path(id): Path<i64>, Form(todo): Form<UpdateTodo>) -> Result<Response> {
+async fn post_todos_edit(Path(id): Path<i64>, Form(todo): Form<UpdateTodo>) -> Result<Response> {
     let result = update_todo(todo.content, id).await;
 
     let res = match is_unique!(result)? {
-        true => redirect_to(url!(index)),
+        true => redirect_to!(get_slash),
         false => {
             let todos = todos().await?;
-            render(index_view("todo already exists", todos))
+            html! {
+                <View>
+                    <GetSlash msg="todo already exists" todos=todos/>
+                </View>
+            }.into_response()
         }
     };
 
     Ok(res)
 }
 
-async fn todos_delete(Path(id): Path<i64>) -> Result<Response> {
+async fn post_todos_delete(Path(id): Path<i64>) -> Result<Response> {
     let _ = delete_todo(id).await?;
 
-    Ok(redirect_to(url!(index)))
+    Ok(redirect_to!(get_slash))
 }
 
-fn todo_form(todo: Option<Todo>) -> Element {
-    let route = match &todo {
-        Some(t) => url!(todos_update, t.id),
-        None => url!(todos_create),
-    };
-    let (id, content) = match todo {
-        Some(t) => (t.id, t.content),
-        None => (0, "".into()),
-    };
+fn NewTodoForm() -> Component {
+    let name = InsertTodo::names();
 
-    form((
-        input()
-            .type_("text")
-            .name("content")
-            .attr("autofocus", "")
-            .value(content),
-        input().type_("hidden").name("id").value(id),
-        input().type_("submit").value("add"),
-    ))
-    .action(route)
-    .method("POST")
+    html! {
+        <form method="post" action=url!(post_todos)>
+            <input type="text" name=name.content autofocus/>
+            <input type="submit" value="add"/>
+        </form>
+    }
 }
 
-fn delete_todo_form(id: i64) -> Element {
-    form(input().type_("submit").value("delete"))
-        .action(url!(todos_delete, id))
-        .method("POST")
+fn EditTodoForm(todo: &Todo) -> Component {
+    let name = UpdateTodo::names();
+
+    html! {
+        <form method="post" action=url!(post_todos_edit, todo.id)>
+            <input type="text" name=name.content autofocus value=&todo.content/>
+            <input type="hidden" name=name.id value=todo.id/>
+            <input type="submit" value="add"/>
+        </form>
+    }
 }
 
-fn todo_list(todos: Vec<Todos>) -> Element {
-    ul(todos.into_iter().map(todo_list_item).collect::<Vec<_>>())
+fn DeleteTodoForm(id: i64) -> Component {
+    html! {
+        <form method="post" action=url!(post_todos_delete, id)>
+            <input type="submit" value="delete"/>
+        </form>
+    }
 }
 
-fn index_view(msg: &'static str, todos: Vec<Todos>) -> Element {
-    div((
-        h1("todos"),
-        div((todo_list(todos), todo_form(None))),
-        div(msg),
-    ))
+fn TodoList(todos: Vec<Todos>) -> Component {
+    html! { <ul>{todos.iter().map(TodoListItem).collect::<Vec<_>>()}</ul> }
 }
 
-fn todo_list_item(todo: Todos) -> Element {
-    let css = css!("display: flex", "gap: 1rem");
-
-    li((
-        div((todo.id, ", ", todo.content, ", ", todo.created_at)),
-        a("edit").href(url!(todos_edit, todo.id)),
-        delete_todo_form(todo.id),
-    ))
-    .css(css)
+fn GetSlash(msg: &'static str, todos: Vec<Todos>) -> Component {
+    html! {
+        <div>
+            <h1>todos</h1>
+            <div>
+                <NewTodoForm/>
+                <TodoList todos=todos/>
+                <div>{msg}</div>
+            </div>
+        </div>
+    }
 }
 
-fn render(element: Element) -> Response {
-    document().head(()).body(element).render()
+fn TodoListItem(todo: &Todos) -> Component {
+    html! {
+        <li>
+            <div>{todo.id} {&todo.content} {todo.created_at}</div>
+            <a href=url!(get_todos_edit, todo.id)>edit</a>
+            <DeleteTodoForm id=todo.id/>
+        </li>
+    }
+}
+
+fn View(elements: Elements) -> Component {
+    html! {
+        <!DOCTYPE html> 
+        <html>
+            <head></head>
+            <body>{elements}</body>
+        </html>
+    }
 }

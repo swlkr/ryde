@@ -383,6 +383,18 @@ where
     }
 }
 
+impl<T> Render for Option<T>
+where
+    T: Render,
+{
+    fn render_to_string(&self, buffer: &mut String) {
+        match self {
+            Some(t) => t.render_to_string(buffer),
+            None => {}
+        }
+    }
+}
+
 impl std::fmt::Display for Component {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(format_args!("{}", self.html))

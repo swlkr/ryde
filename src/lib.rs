@@ -21,6 +21,7 @@ pub use ryde_macros::StaticFiles;
 pub use serde;
 pub use serde::*;
 pub use std::fmt::Display;
+pub use tokio;
 pub use tokio::*;
 
 pub type Result<T> = std::result::Result<T, Error>;

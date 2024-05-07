@@ -4,7 +4,7 @@ mod routes;
 mod static_files;
 
 use db::db_macro;
-use html::html_macro;
+use html::{component_macro, html_macro};
 use proc_macro::TokenStream;
 use quote::ToTokens;
 use routes::{routes_macro, url_macro, StateRouter};
@@ -51,6 +51,15 @@ pub fn static_files(s: TokenStream) -> TokenStream {
 #[proc_macro]
 pub fn html(input: TokenStream) -> TokenStream {
     match html_macro(input) {
+        Ok(s) => s.to_token_stream().into(),
+        Err(e) => e.to_compile_error().into(),
+    }
+}
+
+#[proc_macro]
+pub fn component(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as Expr);
+    match component_macro(input) {
         Ok(s) => s.to_token_stream().into(),
         Err(e) => e.to_compile_error().into(),
     }

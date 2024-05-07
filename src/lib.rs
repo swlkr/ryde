@@ -15,7 +15,7 @@ pub use axum_extra::extract::*;
 pub use axum_extra::headers;
 pub use cookie::Cookie;
 pub use db::{connection, db, rusqlite, tokio_rusqlite, Connection};
-pub use html::{Component, Render, Elements, escape, html};
+pub use html::{Component, Render, Elements, escape, html, component};
 pub use router::{routes, url};
 pub use ryde_macros::StaticFiles;
 pub use serde;

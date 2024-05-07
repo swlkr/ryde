@@ -3,7 +3,7 @@ use proc_macro2::{Span, TokenStream as TokenStream2};
 use quote::{quote, ToTokens};
 use rstml::{self, node::Node, Parser, ParserConfig};
 use std::{collections::HashSet, fmt::Debug};
-use syn::{Ident, LitStr, Result};
+use syn::{Expr, Ident, LitStr, Result};
 
 pub fn html_macro(input: TokenStream) -> Result<TokenStream2> {
     let size_hint = input.to_string().len();
@@ -233,4 +233,16 @@ impl Output {
         self.push_expr();
         self.tokens.into_iter().collect()
     }
+}
+
+pub fn component_macro(input: Expr) -> Result<TokenStream2> {
+    let tokens = match input {
+        Expr::Path(syn::ExprPath { path, .. }) => match path.get_ident() {
+            Some(ident) => ident.to_string().to_lowercase(),
+            None => todo!(),
+        },
+        _ => todo!(),
+    };
+
+    Ok(quote! { #tokens })
 }

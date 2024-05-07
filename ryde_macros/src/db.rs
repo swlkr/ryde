@@ -698,7 +698,8 @@ fn columns_from_expr(table_columns: &HashSet<Column>, expr: &sqlparser::ast::Exp
                 _ => todo!("what"),
             }
         }
-        _ => todo!(),
+        sqlparser::ast::Expr::InSubquery { .. } => vec![],
+        _ => todo!("columns_from_expr"),
     }
 }
 

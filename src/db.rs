@@ -34,21 +34,22 @@ pub async fn connection() -> &'static Connection {
 
 #[cfg(test)]
 mod tests {
-    pub use serde::{self, Deserialize, Serialize};
     use super::*;
+    pub use serde::{self, Deserialize, Serialize};
     use tokio::test;
 
     db!(
         initial_schema = "
-        create table if not exists posts (
-            id integer primary key not null,
-            title text not null,
-            test integer
-        );
-        create table if not exists likes (
-            id integer primary key not null,
-            post_id integer not null references posts(id)
-        )",
+            create table if not exists posts (
+                id integer primary key not null,
+                title text not null,
+                test integer
+            );
+            create table if not exists likes (
+                id integer primary key not null,
+                post_id integer not null references posts(id)
+            );
+            create table if not exists items (value integer not null);",
         insert_post = "
             insert into posts (title, test)
             values (?, ?)
@@ -75,7 +76,16 @@ mod tests {
             returning id, title, test",
         delete_like = "delete from likes where id = ?",
         delete_post = "delete from posts where id = ?",
-        post_count = "select count(*) from posts"
+        post_count = "select count(*) from posts",
+        insert_select = "
+            with all_items as (
+              select 1 as value
+              union all
+              select value + 1 from all_items where value < 10
+            )
+            insert into items select value from all_items",
+        select_first_item = "select items.* from items order by items.value limit 1",
+        select_items = "select items.* from items order by items.value"
     );
 
     #[test]
@@ -115,6 +125,13 @@ mod tests {
 
         let post_count = post_count().await.unwrap();
         assert_eq!(post_count, 0);
+
+        let _ = insert_select().await.unwrap();
+        let first_item = select_first_item().await.unwrap();
+        assert_eq!(first_item.unwrap().value, 1);
+
+        let items = select_items().await.unwrap();
+        assert_eq!(1, items.first().unwrap().value);
+        assert_eq!(10, items.last().unwrap().value);
     }
 }
-

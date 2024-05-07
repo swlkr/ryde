@@ -21,8 +21,11 @@ routes!(
     ("/", get(get_slash)),
     ("/todos", post(post_todos)),
     ("/todos/:id/edit", get(get_todos_edit).post(post_todos_edit)),
-    ("/todos/:id/delete", post(post_todos_delete))
+    ("/todos/:id/delete", post(post_todos_delete)),
+    ("/*files", get(get_files))
 );
+
+embed_static_files!("examples/static_files/static");
 
 #[main]
 async fn main() {
@@ -42,22 +45,17 @@ async fn get_slash() -> Result<Html> {
     })
 }
 
-async fn post_todos(Form(todo): Form<InsertTodo>) -> Result<Response> {
+async fn post_todos(cx: Cx, Form(todo): Form<InsertTodo>) -> Result<Response> {
     let result = insert_todo(todo.content).await;
 
-    let res = match is_unique!(result)? {
-        true => redirect_to!(get_slash),
-        false => {
+    match result.map_err(Error::from) {
+        Ok(Some(_)) => Ok(redirect_to!(get_slash)),
+        Err(Error::UniqueConstraintFailed(_)) => {
             let todos = todos().await?;
-            html! {
-                <View>
-                    <GetSlash msg="todos already exists" todos=todos/>
-                </View>
-            }.into_response()
-        }
-    };
-
-    Ok(res)
+            Ok(cx.render(html! { <GetSlash msg="todos already exists" todos=todos/> }))
+        },
+        Ok(None) | Err(_) => return Err(Error::InternalServer),
+    }
 }
 
 async fn get_todos_edit(Path(id): Path<i64>) -> Result<Html> {
@@ -71,22 +69,17 @@ async fn get_todos_edit(Path(id): Path<i64>) -> Result<Html> {
     })
 }
 
-async fn post_todos_edit(Path(id): Path<i64>, Form(todo): Form<UpdateTodo>) -> Result<Response> {
+async fn post_todos_edit(cx: Cx, Path(id): Path<i64>, Form(todo): Form<UpdateTodo>) -> Result<Response> {
     let result = update_todo(todo.content, id).await;
 
-    let res = match is_unique!(result)? {
-        true => redirect_to!(get_slash),
-        false => {
+    match result.map_err(Error::from) {
+        Ok(Some(_)) => Ok(redirect_to!(get_slash)),
+        Err(Error::UniqueConstraintFailed(_)) => {
             let todos = todos().await?;
-            html! {
-                <View>
-                    <GetSlash msg="todo already exists" todos=todos/>
-                </View>
-            }.into_response()
-        }
-    };
-
-    Ok(res)
+            Ok(cx.render(html! { <GetSlash msg="todos already exists" todos=todos/> }))
+        },
+        Ok(None) | Err(_) => return Err(Error::InternalServer),
+    }
 }
 
 async fn post_todos_delete(Path(id): Path<i64>) -> Result<Response> {
@@ -157,8 +150,31 @@ fn View(elements: Elements) -> Component {
     html! {
         <!DOCTYPE html> 
         <html>
-            <head></head>
+            <head>{render_static_files!()}</head>
             <body>{elements}</body>
         </html>
+    }
+}
+
+struct Cx;
+
+impl Cx {
+    fn render(&self, elements: Elements) -> Response {
+        html! { <View>{elements}</View> }.into_response()
+    }
+}
+
+#[async_trait]
+impl<S> FromRequestParts<S> for Cx
+where
+    S: Send + Sync,
+{
+    type Rejection = Response;
+
+    async fn from_request_parts(
+        _parts: &mut axum::http::request::Parts,
+        _state: &S,
+    ) -> std::result::Result<Self, Self::Rejection> {
+        Ok(Cx {})
     }
 }

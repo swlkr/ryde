@@ -1,8 +1,8 @@
 extern crate self as ryde;
 
 mod db;
-mod router;
 mod html;
+mod router;
 
 pub use axum;
 pub use axum::extract::*;
@@ -15,7 +15,7 @@ pub use axum_extra::extract::*;
 pub use axum_extra::headers;
 pub use cookie::Cookie;
 pub use db::{connection, db, rusqlite, tokio_rusqlite, Connection};
-pub use html::{Component, Render, Elements, escape, html, component};
+pub use html::{component, escape, html, Component, Elements, Render};
 pub use router::{routes, url};
 pub use ryde_macros::StaticFiles;
 pub use serde;
@@ -54,10 +54,7 @@ impl IntoResponse for Html {
 }
 
 pub fn redirect(s: String) -> Response {
-    let headers = [
-        (SET_COOKIE, format!("flash={}", "")),
-        (LOCATION, s.into()),
-    ];
+    let headers = [(SET_COOKIE, format!("flash={}", "")), (LOCATION, s.into())];
 
     (http::StatusCode::SEE_OTHER, headers).into_response()
 }

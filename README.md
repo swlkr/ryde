@@ -65,7 +65,7 @@ db!(
 routes!(
     ("/", get(get_slash)),
     ("/todos", get(get_todos).post(post_todos)),
-    ("/*files", get(files_handler))
+    ("/*files", get(get_files))
     with Arc<AppState>
 );
 

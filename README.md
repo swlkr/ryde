@@ -1,6 +1,6 @@
 # ryde
 
-ryde is a single person, single file web development library for rust
+ryde is a single person, single file hypermedia web framework for rust
 
 # Install
 

@@ -30,7 +30,7 @@ async fn main() {
     serve("::1:9001", routes()).await
 }
 
-async fn index() -> Html {
+async fn get_slash() -> Html {
     html! {
         <!DOCTYPE html>
         <html lang="en">

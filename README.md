@@ -52,11 +52,12 @@ async fn index() -> Html {
 use ryde::*;
 
 db!(
-    create_todos = "create table if not exists todos (
-        id integer primary key,
-        content text not null,
-        created_at integer not null default(unixepoch())
-    )",
+    create_todos = "
+        create table if not exists todos (
+            id integer primary key,
+            content text not null,
+            created_at integer not null default(unixepoch())
+        );",
     insert_todo = "insert into todos (content) values (?)",
     todos = "select * from todos order by created_at desc limit 30"
 );
@@ -73,7 +74,7 @@ struct AppState {
     some_state: String
 };
 
-embed_static_files!("static", files_handler);
+embed_static_files!("static");
 
 #[main]
 async fn main() {
@@ -102,7 +103,7 @@ async fn get_todos() -> Result<Html> {
     })
 }
 
-async fn post_todos(Form(todo): Form<InsertTodo>) -> Result<Html> {
+async fn post_todos(Form(todo): Form<InsertTodo>) -> Result<Response> {
     let _todo = insert_todo(todo.content).await?;
 
     Ok(redirect_to!(get_todos))
@@ -117,23 +118,21 @@ fn Form(action: &str, elements: Elements) -> Component {
 }
 
 fn TodoForm() -> Component {
-    let names = cols!(insert_todo);
+    let InsertTodoNames { content } = InsertTodo::names();
 
     html! {
         <Form action={url!(todos_create)}>
-            <input type="text" name={names.content} />
+            <input type="text" name={content} />
             <input type="submit" name="save" />
         </Form>
     }
 }
 
 fn TodoList(todos: Vec<Todos>) -> Component {
-    let todos = map!(todos, TodoListItem);
-
     html! {
         <div class="text-black dark:text-white">
             <h1 class="text-2xl">todos</h1>
-            <ul>{todos}</ul>
+            <ul>{todos.iter().map(|todo| html! { <TodoListItem todo=todo /> })}</ul>
             <TodoForm />
         </div>
     }

@@ -247,8 +247,28 @@ fn query_stmt(
     body: &SetExpr,
     limit: Option<&sqlparser::ast::Expr>,
 ) -> Option<Stmt> {
-    let SetExpr::Select(select) = body else {
-        return None;
+    let select = match body {
+        SetExpr::Select(select) => select,
+        SetExpr::Insert(Statement::Insert {
+            table_name,
+            columns,
+            returning,
+            source,
+            ..
+        }) => {
+            return insert_stmt(
+                db_cols,
+                ident,
+                sql,
+                table_name.to_string(),
+                columns,
+                returning,
+                source,
+            );
+        }
+        _ => {
+            return None;
+        }
     };
     let Select {
         projection,
@@ -460,22 +480,29 @@ fn insert_stmt(
     // check insert into count matches placeholder count
     let placeholder_count = match source.as_deref() {
         Some(Query { body, .. }) => match &**body {
-            SetExpr::Values(value) => value
-                .rows
-                .iter()
-                .flatten()
-                .filter(|expr| match expr {
-                    sqlparser::ast::Expr::Value(sqlparser::ast::Value::Placeholder(_)) => true,
-                    _ => false,
-                })
-                .count(),
-            _ => 0,
+            SetExpr::Values(value) => Some(
+                value
+                    .rows
+                    .iter()
+                    .flatten()
+                    .filter(|expr| match expr {
+                        sqlparser::ast::Expr::Value(sqlparser::ast::Value::Placeholder(_)) => true,
+                        _ => false,
+                    })
+                    .count(),
+            ),
+            _ => None,
         },
-        None => 0,
+        None => None,
     };
     let input_col_names = columns.iter().map(|c| c.to_string()).collect::<Vec<_>>();
-    if placeholder_count != input_col_names.len() {
-        panic!("{} placeholder count doesn't match insert into", ident);
+    match placeholder_count {
+        Some(pc) => {
+            if pc != input_col_names.len() {
+                panic!("{} placeholder count doesn't match insert into", ident);
+            }
+        }
+        None => {}
     }
 
     let table_columns = db_cols

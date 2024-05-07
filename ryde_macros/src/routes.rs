@@ -173,7 +173,7 @@ pub fn url_macro(input: Punctuated<Expr, Token![,]>) -> Result<TokenStream> {
     let Some(ident) = path.get_ident() else {
         panic!("first argument should be an ident");
     };
-    let fn_name = Ident::new(&format!("{}_path", ident.to_string()), Span::call_site());
+    let fn_name = Ident::new(&format!("{}_path", ident.to_string()), ident.span());
     let rest = input.iter().skip(1).collect::<Vec<_>>();
 
     Ok(quote! {

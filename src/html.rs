@@ -1,6 +1,6 @@
 #![allow(non_snake_case)]
 
-pub use ryde_macros::html;
+pub use ryde_macros::{component, html};
 use std::borrow::Cow;
 
 #[cfg(test)]
@@ -139,16 +139,9 @@ mod tests {
                 {rows
                     .iter()
                     .map(|cols| {
-                        html! {
-                            <tr>
-                                {cols
-                                    .iter()
-                                    .map(|col| html! { <td>{col}</td> })
-                                    .collect::<Vec<_>>()}
-                            </tr>
-                        }
-                    })
-                    .collect::<Vec<_>>()}
+                        html! { <tr>{cols.iter().map(|col| html! { <td>{col}</td> })}</tr> }
+                    })}
+
             </table>
         };
 
@@ -187,13 +180,9 @@ mod tests {
                 {rows
                     .iter()
                     .map(|cols| {
-                        html! {
-                            <Row>
-                                {cols.iter().map(|i| html! { <Col>{i}</Col> }).collect::<Vec<_>>()}
-                            </Row>
-                        }
-                    })
-                    .collect::<Vec<_>>()}
+                        html! { <Row>{cols.iter().map(|i| html! { <Col>{i}</Col> })}</Row> }
+                    })}
+
             </Table>
         };
 
@@ -305,9 +294,31 @@ mod tests {
 
 pub type Elements = Component;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Component {
     pub html: String,
+}
+
+impl<I, F, T> Render for std::iter::Map<I, F>
+where
+    I: Iterator + Clone,
+    F: FnMut(I::Item) -> T + Clone,
+    T: Render,
+{
+    fn render_to_string(&self, buffer: &mut String) {
+        for item in self.clone().into_iter() {
+            item.render_to_string(buffer);
+        }
+    }
+}
+
+impl IntoIterator for Component {
+    type Item = Component;
+    type IntoIter = std::vec::IntoIter<Component>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        vec![self].into_iter()
+    }
 }
 
 pub trait Render {
@@ -392,6 +403,15 @@ where
             Some(t) => t.render_to_string(buffer),
             None => {}
         }
+    }
+}
+
+impl Render for bool {
+    fn render_to_string(&self, buffer: &mut String) {
+        buffer.push_str(match self {
+            true => "true",
+            false => "false",
+        })
     }
 }
 

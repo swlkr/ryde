@@ -53,7 +53,7 @@ async fn post_todos(cx: Cx, Form(todo): Form<InsertTodo>) -> Result<Response> {
         Err(Error::UniqueConstraintFailed(_)) => {
             let todos = todos().await?;
             Ok(cx.render(html! { <GetSlash msg="todos already exists" todos=todos/> }))
-        },
+        }
         Ok(None) | Err(_) => return Err(Error::InternalServer),
     }
 }
@@ -69,7 +69,11 @@ async fn get_todos_edit(Path(id): Path<i64>) -> Result<Html> {
     })
 }
 
-async fn post_todos_edit(cx: Cx, Path(id): Path<i64>, Form(todo): Form<UpdateTodo>) -> Result<Response> {
+async fn post_todos_edit(
+    cx: Cx,
+    Path(id): Path<i64>,
+    Form(todo): Form<UpdateTodo>,
+) -> Result<Response> {
     let result = update_todo(todo.content, id).await;
 
     match result.map_err(Error::from) {
@@ -77,7 +81,7 @@ async fn post_todos_edit(cx: Cx, Path(id): Path<i64>, Form(todo): Form<UpdateTod
         Err(Error::UniqueConstraintFailed(_)) => {
             let todos = todos().await?;
             Ok(cx.render(html! { <GetSlash msg="todos already exists" todos=todos/> }))
-        },
+        }
         Ok(None) | Err(_) => return Err(Error::InternalServer),
     }
 }
@@ -120,7 +124,7 @@ fn DeleteTodoForm(id: i64) -> Component {
 }
 
 fn TodoList(todos: Vec<Todos>) -> Component {
-    html! { <ul>{todos.iter().map(TodoListItem).collect::<Vec<_>>()}</ul> }
+    html! { <table>{todos.iter().map(TodoListRow)}</table> }
 }
 
 fn GetSlash(msg: &'static str, todos: Vec<Todos>) -> Component {
@@ -136,13 +140,19 @@ fn GetSlash(msg: &'static str, todos: Vec<Todos>) -> Component {
     }
 }
 
-fn TodoListItem(todo: &Todos) -> Component {
+fn TodoListRow(todo: &Todos) -> Component {
     html! {
-        <li>
-            <div>{todo.id} {&todo.content} {todo.created_at}</div>
-            <a href=url!(get_todos_edit, todo.id)>edit</a>
-            <DeleteTodoForm id=todo.id/>
-        </li>
+        <tr>
+            <td>{todo.id}</td>
+            <td>{&todo.content}</td>
+            <td>{todo.created_at}</td>
+            <td>
+                <a href=url!(get_todos_edit, todo.id)>edit</a>
+            </td>
+            <td>
+                <DeleteTodoForm id=todo.id/>
+            </td>
+        </tr>
     }
 }
 

@@ -60,14 +60,14 @@ fn stmt_tokens(output: Stmt) -> TokenStream {
             let param_fields: Vec<TokenStream> = in_cols.iter().map(param_tokens).collect();
 
             quote! {
-                pub async fn #ident(#(#fn_args,)*) -> tokio_rusqlite::Result<usize> {
-                    connection()
+                pub async fn #ident(#(#fn_args,)*) -> ryde::Result<usize> {
+                    Ok(connection()
                         .await
                         .call(move |conn| {
                             let params = tokio_rusqlite::params![#(#param_fields,)*];
                             conn.execute(#sql, params).map_err(|err| err.into())
                         })
-                        .await
+                        .await?)
                 }
             }
         }
@@ -80,7 +80,7 @@ fn stmt_tokens(output: Stmt) -> TokenStream {
             let param_fields: Vec<TokenStream> = in_cols.iter().map(param_tokens).collect();
 
             quote! {
-                 pub async fn #ident(#(#fn_args,)*) -> tokio_rusqlite::Result<i64> {
+                 pub async fn #ident(#(#fn_args,)*) -> ryde::Result<i64> {
                     let result = connection()
                         .await
                         .call(move |conn| {
@@ -95,7 +95,6 @@ fn stmt_tokens(output: Stmt) -> TokenStream {
                             }
                         })
                         .await?;
-
 
                     Ok(result)
                 }
@@ -158,8 +157,8 @@ fn stmt_tokens(output: Stmt) -> TokenStream {
 
                 pub struct #name_struct_ident { #(#name_struct_fields,)* }
 
-                pub async fn #ident(#(#fn_args,)*) -> tokio_rusqlite::Result<#return_type> {
-                    connection()
+                pub async fn #ident(#(#fn_args,)*) -> ryde::Result<#return_type> {
+                    Ok(connection()
                         .await
                         .call(move |conn| {
                             let mut stmt = conn.prepare(#sql)?;
@@ -169,7 +168,7 @@ fn stmt_tokens(output: Stmt) -> TokenStream {
                                 .collect::<rusqlite::Result<Vec<#struct_ident>>>();
                             #return_statement
                         })
-                        .await
+                        .await?)
                 }
             }
         }

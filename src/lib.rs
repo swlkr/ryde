@@ -154,7 +154,18 @@ impl From<tokio_rusqlite::Error> for Error {
         match value {
             tokio_rusqlite::Error::ConnectionClosed => Error::DatabaseConnectionClosed,
             tokio_rusqlite::Error::Close(_) => Error::DatabaseClose,
-            tokio_rusqlite::Error::Rusqlite(err) => {
+            tokio_rusqlite::Error::Rusqlite(err) => err.into(),
+            tokio_rusqlite::Error::Other(err) => Error::Database(err.to_string()),
+            _ => unreachable!(),
+        }
+    }
+}
+
+impl From<rusqlite::Error> for Error {
+    fn from(value: rusqlite::Error) -> Self {
+        match value {
+            rusqlite::Error::QueryReturnedNoRows => Error::NotFound,
+            err => {
                 // TODO: follow the white rabbit to the actual error for unique constraints
                 let s = err.to_string();
                 if s.starts_with("UNIQUE constraint failed: ") {
@@ -165,8 +176,6 @@ impl From<tokio_rusqlite::Error> for Error {
                     Error::Database(s)
                 }
             }
-            tokio_rusqlite::Error::Other(err) => Error::Database(err.to_string()),
-            _ => unreachable!(),
         }
     }
 }

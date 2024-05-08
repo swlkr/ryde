@@ -20,7 +20,7 @@ use ryde::*;
 
 routes!(
     ("/", get(get_slash)),
-    ("/*files", get(get_files)) // serves the static files from the root ::1:3000/test.css, ::1:3000/app.js
+    ("/*files", get(get_files))
 );
 
 embed_static_files!("static");

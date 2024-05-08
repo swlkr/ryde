@@ -36,7 +36,7 @@ async fn get_slash() -> Html {
         <html lang="en">
             <head>
                 <title>ryde with rust</title>
-                {render_static_files!("static")}
+                {render_static_files!()}
             </head>
             <body>
                 <h1 class="text-2xl">ryde with rust</h1>

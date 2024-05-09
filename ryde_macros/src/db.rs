@@ -698,13 +698,22 @@ fn columns_from_expr(table_columns: &HashSet<Column>, expr: &sqlparser::ast::Exp
             .filter(|c| c.table_name == obj_name.to_string())
             .map(|c| c.clone())
             .collect::<Vec<_>>(),
-        sqlparser::ast::Expr::BinaryOp { left, right, .. } => vec![
-            columns_from_expr(&table_columns, left),
-            columns_from_expr(&table_columns, right),
-        ]
-        .into_iter()
-        .flat_map(|c| c)
-        .collect::<Vec<_>>(),
+        sqlparser::ast::Expr::BinaryOp { left, right, .. } => match (&**left, &**right) {
+            (
+                sqlparser::ast::Expr::Identifier(_),
+                sqlparser::ast::Expr::Value(sqlparser::ast::Value::Placeholder(token)),
+            )
+            | (
+                sqlparser::ast::Expr::CompoundIdentifier(_),
+                sqlparser::ast::Expr::Value(sqlparser::ast::Value::Placeholder(token)),
+            ) => match token.as_str() {
+                "?" => columns_from_expr(&table_columns, left),
+                _ => unimplemented!("? placeholders only please"),
+            },
+            (sqlparser::ast::Expr::BinaryOp { .. }, _) => columns_from_expr(&table_columns, left),
+            (_, sqlparser::ast::Expr::BinaryOp { .. }) => columns_from_expr(&table_columns, right),
+            _ => vec![],
+        },
         sqlparser::ast::Expr::Value(_) => vec![],
         sqlparser::ast::Expr::Function(sqlparser::ast::Function { name, args, .. }) => {
             match name.to_string().as_str() {

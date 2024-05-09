@@ -746,6 +746,8 @@ fn columns_from_expr(table_columns: &HashSet<Column>, expr: &sqlparser::ast::Exp
                         column_type: ColumnType::Aggregate,
                     }]
                 }
+                "strftime" => vec![],
+                "unixepoch" => vec![],
                 _ => todo!("what"),
             }
         }

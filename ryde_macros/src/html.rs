@@ -3,7 +3,7 @@ use proc_macro2::{Span, TokenStream as TokenStream2};
 use quote::{quote, ToTokens};
 use rstml::{self, node::Node, Parser, ParserConfig};
 use std::{collections::HashSet, fmt::Debug};
-use syn::{Expr, Ident, LitStr, Result};
+use syn::{Ident, LitStr, Result};
 
 pub fn html_macro(input: TokenStream) -> Result<TokenStream2> {
     let size_hint = input.to_string().len();

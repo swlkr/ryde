@@ -272,8 +272,24 @@ fn query_stmt(
     let Select {
         projection,
         selection,
+        from,
         ..
     } = &**select;
+    // make sure the table in from matches something in db_cols
+    let schema_tables = db_cols
+        .iter()
+        .map(|col| &col.table_name)
+        .collect::<HashSet<_>>();
+    from.iter()
+        .map(|f| match &f.relation {
+            TableFactor::Table { name, .. } => name.to_string(),
+            _ => todo!("table"),
+        })
+        .for_each(|table| {
+            if !schema_tables.contains(&table) {
+                panic!("{}: table name does not exist {}", ident, table);
+            }
+        });
     let in_cols = match selection {
         Some(expr) => columns_from_expr(&db_cols, expr),
         None => vec![],

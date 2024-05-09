@@ -36,3 +36,6 @@ name = "static_files"
 
 [[example]]
 name = "db"
+
+[[example]]
+name = "protected"

@@ -158,7 +158,7 @@ fn TodoListRow(todo: &Todos) -> Component {
 
 fn View(elements: Elements) -> Component {
     html! {
-        <!DOCTYPE html>
+        <!DOCTYPE html> 
         <html>
             <head>{render_static_files!()}</head>
             <body>{elements}</body>

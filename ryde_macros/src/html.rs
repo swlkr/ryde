@@ -235,14 +235,8 @@ impl Output {
     }
 }
 
-pub fn component_macro(input: Expr) -> Result<TokenStream2> {
-    let tokens = match input {
-        Expr::Path(syn::ExprPath { path, .. }) => match path.get_ident() {
-            Some(ident) => ident.to_string().to_lowercase(),
-            None => todo!(),
-        },
-        _ => todo!(),
-    };
+pub fn component_macro(input: Ident) -> Result<TokenStream2> {
+    let tokens = input.to_string().to_lowercase();
 
     Ok(quote! { #tokens })
 }

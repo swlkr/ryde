@@ -22,7 +22,7 @@ async fn get_protected(cx: Cx, _user: User) -> Result<Html> {
 
 fn View(elements: Elements) -> Component {
     html! {
-        <!DOCTYPE html> 
+        <!DOCTYPE html>
         <html lang="en">
             <head>
                 <title>errors</title>
@@ -47,7 +47,10 @@ where
 {
     type Rejection = Error;
 
-    async fn from_request_parts(_parts: &mut axum::http::request::Parts, _state: &S) -> std::result::Result<Self, Self::Rejection> {
+    async fn from_request_parts(
+        _parts: &mut axum::http::request::Parts,
+        _state: &S,
+    ) -> std::result::Result<Self, Self::Rejection> {
         Ok(Cx {})
     }
 }
@@ -56,7 +59,7 @@ struct User;
 
 #[derive(Serialize, Deserialize)]
 struct AuthQuery {
-    auth: Option<bool>
+    auth: Option<bool>,
 }
 
 #[async_trait]
@@ -66,11 +69,16 @@ where
 {
     type Rejection = Error;
 
-    async fn from_request_parts(parts: &mut axum::http::request::Parts, state: &S) -> std::result::Result<Self, Self::Rejection> {
-        let Query(AuthQuery { auth }) = Query::from_request_parts(parts, state).await.map_err(|_| Error::NotFound)?;
+    async fn from_request_parts(
+        parts: &mut axum::http::request::Parts,
+        state: &S,
+    ) -> std::result::Result<Self, Self::Rejection> {
+        let Query(AuthQuery { auth }) = Query::from_request_parts(parts, state)
+            .await
+            .map_err(|_| Error::NotFound)?;
         match auth {
             Some(true) => Ok(User {}),
-            Some(false) | None => Err(Error::NotFound)
+            Some(false) | None => Err(Error::NotFound),
         }
     }
 }

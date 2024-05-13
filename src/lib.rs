@@ -186,7 +186,7 @@ impl From<axum_extra::extract::multipart::MultipartError> for Error {
 #[macro_export]
 macro_rules! embed_static_files {
     ($folder:expr) => {
-        embed_static_files!($folder, "", get_files);
+        embed_static_files!($folder, "/", get_files);
     };
     ($folder:expr, $prefix:expr) => {
         embed_static_files!($folder, $prefix, get_files);

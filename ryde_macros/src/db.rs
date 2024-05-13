@@ -670,6 +670,23 @@ fn columns_from_select_item(
     }
 }
 
+fn in_columns_from_query(
+    table_columns: &HashSet<Column>,
+    query: &sqlparser::ast::Query,
+) -> Vec<Column> {
+    let sqlparser::ast::Query { body, .. } = query;
+    match &**body {
+        SetExpr::Select(select) => {
+            let Select { selection, .. } = &**select;
+            match selection {
+                Some(expr) => columns_from_expr(table_columns, expr),
+                None => todo!(),
+            }
+        }
+        _ => todo!(),
+    }
+}
+
 fn columns_from_expr(table_columns: &HashSet<Column>, expr: &sqlparser::ast::Expr) -> Vec<Column> {
     match expr {
         sqlparser::ast::Expr::Identifier(ident) => {
@@ -751,7 +768,9 @@ fn columns_from_expr(table_columns: &HashSet<Column>, expr: &sqlparser::ast::Exp
                 _ => todo!("what"),
             }
         }
-        sqlparser::ast::Expr::InSubquery { .. } => vec![],
+        sqlparser::ast::Expr::InSubquery { subquery, .. } => {
+            in_columns_from_query(table_columns, subquery)
+        }
         _ => todo!("columns_from_expr"),
     }
 }

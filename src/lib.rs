@@ -67,6 +67,14 @@ macro_rules! redirect_to {
     }}
 }
 
+#[macro_export]
+macro_rules! id {
+    ($($idents:ident),*) => {{
+        $(let _ = &$idents;)*
+        vec![$((stringify!($idents)),)*].join(" ")
+    }};
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Error {
     DatabaseConnectionClosed,

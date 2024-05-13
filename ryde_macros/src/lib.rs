@@ -41,7 +41,7 @@ pub fn url(input: TokenStream) -> TokenStream {
     }
 }
 
-#[proc_macro_derive(StaticFiles, attributes(folder))]
+#[proc_macro_derive(StaticFiles, attributes(folder, prefix))]
 pub fn static_files(s: TokenStream) -> TokenStream {
     let input = parse_macro_input!(s as DeriveInput);
     match static_files_macro(input) {

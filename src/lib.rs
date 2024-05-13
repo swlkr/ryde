@@ -17,7 +17,7 @@ pub use cookie::Cookie;
 pub use db::{connection, db, rusqlite, tokio_rusqlite, Connection};
 pub use html::{component, escape, html, Component, Elements, Render};
 pub use router::{routes, url};
-pub use ryde_macros::{StaticFiles, env_vars};
+pub use ryde_macros::{env_vars, StaticFiles};
 pub use serde;
 pub use serde::*;
 pub use std::fmt::Display;
@@ -177,13 +177,17 @@ impl From<axum_extra::extract::multipart::MultipartError> for Error {
 
 #[macro_export]
 macro_rules! embed_static_files {
-    ($expr:expr) => {
-        embed_static_files!($expr, get_files);
+    ($folder:expr) => {
+        embed_static_files!($folder, "", get_files);
+    };
+    ($folder:expr, $prefix:expr) => {
+        embed_static_files!($folder, $prefix, get_files);
     };
 
-    ($expr:expr, $ident:ident) => {
+    ($folder:expr, $prefix:expr, $ident:ident) => {
         #[derive(ryde::StaticFiles)]
-        #[folder($expr)]
+        #[folder($folder)]
+        #[prefix($prefix)]
         pub struct Assets;
 
         pub async fn $ident(uri: axum::http::Uri) -> impl axum::response::IntoResponse {
@@ -202,7 +206,6 @@ macro_rules! embed_static_files {
         }
     };
 }
-
 
 #[cfg(test)]
 mod tests {

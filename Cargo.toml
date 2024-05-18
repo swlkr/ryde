@@ -18,7 +18,7 @@ ryde_macros = { path = "ryde_macros", version = "0.1.0" }
 ryu = "1.0"
 seq-macro = "0.3"
 serde = { version = "1", features = ["derive"] }
-tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs", "io-util"] }
 tokio-rusqlite = { git = "https://github.com/programatik29/tokio-rusqlite.git", version = "0.5" }
 tower = "0.4"
 

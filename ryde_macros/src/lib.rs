@@ -11,7 +11,7 @@ use proc_macro::TokenStream;
 use quote::ToTokens;
 use routes::{routes_macro, url_macro, StateRouter, Url};
 use static_files::static_files_macro;
-use syn::{parse_macro_input, punctuated::Punctuated, DeriveInput, Expr, ExprAssign, Ident, Token};
+use syn::{parse_macro_input, punctuated::Punctuated, DeriveInput, ExprAssign, Ident, Token};
 
 #[proc_macro]
 pub fn db(input: TokenStream) -> TokenStream {

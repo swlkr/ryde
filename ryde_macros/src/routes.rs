@@ -87,14 +87,11 @@ pub fn routes_macro(input: StateRouter) -> Result<TokenStream> {
         #(#helpers)*
     };
 
-    dbg!(&tokens.to_string());
-
     Ok(tokens)
 }
 
 fn parts<'a>(expr: &'a Expr, lit: &'a Lit) -> Option<(&'a Lit, Vec<Ident>, &'a Expr)> {
     let idents = handlers(&expr);
-    dbg!(&idents);
     if idents.is_empty() {
         None
     } else {

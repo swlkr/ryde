@@ -61,7 +61,7 @@ pub fn redirect(s: String) -> Response {
 
 #[macro_export]
 macro_rules! redirect_to {
-    ($ident:ident, $($expr:expr),*) => {{
+    ($ident:ident $(,$expr:expr)*) => {{
         let _ = $ident;
         redirect(url!($ident, $($expr),*))
     }}

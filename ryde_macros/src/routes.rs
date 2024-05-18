@@ -7,7 +7,7 @@ use syn::{
 };
 
 pub fn routes_macro(input: StateRouter) -> Result<TokenStream> {
-    let parts: Vec<(&Lit, Vec<(Ident, Ident)>)> = input
+    let parts: Vec<(&Lit, Vec<Ident>, &Expr)> = input
         .routes
         .iter()
         .filter_map(|ExprTuple { elems, .. }| {
@@ -17,57 +17,20 @@ pub fn routes_macro(input: StateRouter) -> Result<TokenStream> {
                 return None;
             };
 
-            match expr {
-                Expr::Call(ExprCall { func, args, .. }) => {
-                    let handler = handler(args);
-                    let fn_name = match &**func {
-                        Expr::Path(ExprPath { path, .. }) => path
-                            .get_ident()
-                            .expect("fn name should be an identifier")
-                            .clone(),
-                        _ => panic!("fn name should be an identifier"),
-                    };
-
-                    Some(vec![(lit, vec![(fn_name, handler)])])
-                }
-                Expr::MethodCall(ExprMethodCall {
-                    receiver,
-                    method,
-                    args,
-                    ..
-                }) => {
-                    let handler = handler(args);
-                    let mut result: Vec<(Ident, Ident)> = vec![(method.clone(), handler)];
-                    result.extend(method_router(&receiver));
-
-                    Some(vec![(lit, result)])
-                }
-                _ => None,
-            }
+            parts(expr, lit)
         })
-        .flatten()
         .collect();
 
-    let routes = parts
-        .iter()
-        .map(|(lit, method_router)| {
-            let tokens = method_router
-                .iter()
-                .map(|(fn_name, handler)| quote! { #fn_name(#handler) })
-                .collect::<Vec<_>>();
-
-            quote! {
-                .route(#lit, #(#tokens).*)
-            }
-        })
-        .collect::<Vec<_>>();
+    let routes = parts.iter().map(|(lit, _ident, expr)| {
+        quote! { .route(#lit, #expr) }
+    });
 
     let helpers = parts
         .iter()
-        .flat_map(|(lit, method_router)| {
-            method_router
+        .flat_map(|(lit, handlers, _expr)| {
+            handlers
                 .iter()
-                .map(|(_method, handler)| handler.to_string())
+                .map(|handler| handler.to_string())
                 .collect::<HashSet<_>>()
                 .into_iter()
                 .map(|x| {
@@ -114,7 +77,7 @@ pub fn routes_macro(input: StateRouter) -> Result<TokenStream> {
         None => quote! { () },
     };
 
-    Ok(quote! {
+    let tokens = quote! {
         fn routes() -> axum::Router<#generic> {
             use axum::routing::{get, post, put, patch, head, trace};
 
@@ -122,63 +85,70 @@ pub fn routes_macro(input: StateRouter) -> Result<TokenStream> {
         }
 
         #(#helpers)*
-    })
+    };
+
+    dbg!(&tokens.to_string());
+
+    Ok(tokens)
 }
 
-fn method_router(expr: &Expr) -> Vec<(Ident, Ident)> {
+fn parts<'a>(expr: &'a Expr, lit: &'a Lit) -> Option<(&'a Lit, Vec<Ident>, &'a Expr)> {
+    let idents = handlers(&expr);
+    dbg!(&idents);
+    if idents.is_empty() {
+        None
+    } else {
+        Some((lit, idents, expr))
+    }
+}
+
+fn handlers(expr: &Expr) -> Vec<Ident> {
     match expr {
-        Expr::Call(ExprCall { func, args, .. }) => {
-            let method_name = match &**func {
-                Expr::Path(ExprPath { path, .. }) => path
-                    .get_ident()
-                    .cloned()
-                    .expect("fn name should be an identifier"),
-                _ => unimplemented!(),
-            };
-            let handler = handler(args);
+        Expr::Call(ExprCall { args, .. }) => handler(args),
+        Expr::MethodCall(ExprMethodCall { receiver, args, .. }) => {
+            let mut idents = handler(args);
+            let rest = handlers(&receiver);
+            idents.extend(rest);
 
-            vec![(method_name, handler)]
+            idents
         }
-        Expr::MethodCall(ExprMethodCall {
-            receiver,
-            method,
-            args,
-            ..
-        }) => {
-            let handler = handler(args);
-
-            let mut result = vec![(method.clone(), handler)];
-            result.extend(method_router(&receiver));
-            result
-        }
-        _ => unimplemented!(),
+        _ => vec![],
     }
 }
 
-fn handler(args: &Punctuated<Expr, syn::token::Comma>) -> Ident {
-    match args.first() {
-        Some(Expr::Path(ExprPath { path, .. })) => path
-            .get_ident()
-            .cloned()
-            .expect("only named fns as handlers are supported"),
-
-        _ => unimplemented!(),
-    }
+fn handler(args: &Punctuated<Expr, syn::token::Comma>) -> Vec<Ident> {
+    args.iter()
+        .filter_map(|arg| match arg {
+            Expr::Path(ExprPath { path, .. }) => path.get_ident().cloned(),
+            _ => None,
+        })
+        .collect::<Vec<Ident>>()
 }
 
-pub fn url_macro(input: Punctuated<Expr, Token![,]>) -> Result<TokenStream> {
-    let Some(Expr::Path(ExprPath { path, .. })) = input.first() else {
-        panic!("first argument should be an handler fn name");
-    };
-    let Some(ident) = path.get_ident() else {
-        panic!("first argument should be an ident");
-    };
-    let fn_name = Ident::new(&format!("{}_path", ident.to_string()), ident.span());
-    let rest = input.iter().skip(1).collect::<Vec<_>>();
+pub fn url_macro(Url { url, path }: Url) -> Result<TokenStream> {
+    let fn_name = Ident::new(&format!("{}_path", url.to_string()), Span::call_site());
 
     Ok(quote! {
-        #fn_name(#(#rest,)*)
+        {
+            let _ = &#url;
+            #fn_name(#path)
+        }
     })
+}
+
+pub struct Url {
+    url: Ident,
+    path: Punctuated<Expr, Token![,]>,
+}
+
+impl Parse for Url {
+    fn parse(input: syn::parse::ParseStream) -> Result<Self> {
+        let url = input.parse::<syn::Ident>()?;
+        let _comma: Option<Token![,]> = input.parse()?;
+        let path = Punctuated::parse_terminated(input)?;
+
+        Ok(Self { url, path })
+    }
 }
 
 pub struct StateRouter {

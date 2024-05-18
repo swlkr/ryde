@@ -9,7 +9,7 @@ use env::env_vars_macro;
 use html::{component_macro, html_macro};
 use proc_macro::TokenStream;
 use quote::ToTokens;
-use routes::{routes_macro, url_macro, StateRouter};
+use routes::{routes_macro, url_macro, StateRouter, Url};
 use static_files::static_files_macro;
 use syn::{parse_macro_input, punctuated::Punctuated, DeriveInput, Expr, ExprAssign, Ident, Token};
 
@@ -34,7 +34,7 @@ pub fn routes(input: TokenStream) -> TokenStream {
 
 #[proc_macro]
 pub fn url(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input with Punctuated::<Expr, Token![,]>::parse_terminated);
+    let input = parse_macro_input!(input as Url);
     match url_macro(input) {
         Ok(s) => s.to_token_stream().into(),
         Err(e) => e.to_compile_error().into(),

@@ -39,12 +39,14 @@ mod tests {
     use tokio::test;
 
     db!(
-        initial_schema = "
+        create_posts = "
             create table if not exists posts (
                 id integer primary key not null,
                 title text not null,
                 test integer
-            );
+            )
+        " as Post,
+        initial_schema = "
             create table if not exists likes (
                 id integer primary key not null,
                 post_id integer not null references posts(id)
@@ -53,10 +55,10 @@ mod tests {
         insert_post = "
             insert into posts (title, test)
             values (?, ?)
-            returning title, test
-        ",
-        select_posts = "select id, title, test from posts",
-        select_post = "select id, title, test from posts where id = ? limit 1",
+            returning *
+        " as Post,
+        select_posts = "select id, title, test from posts", // TODO: as Vec<Post>
+        select_post = "select posts.* from posts where id = ? limit 1" as Post,
         like_post = "insert into likes (post_id) values (?) returning id, post_id",
         select_likes = "
             select
@@ -73,9 +75,9 @@ mod tests {
             update posts
             set title = ?, test = ?
             where id = ?
-            returning id, title, test",
+            returning *" as Post,
         delete_like = "delete from likes where id = ?",
-        delete_post = "delete from posts where id = ?",
+        delete_post = "delete from posts where id = ? returning *" as Post,
         post_count = "select count(*) from posts",
         insert_select = "
             with all_items as (
@@ -89,49 +91,45 @@ mod tests {
     );
 
     #[test]
-    async fn it_works() {
+    async fn it_works() -> ryde::Result<()> {
         std::env::set_var("DATABASE_URL", ":memory:");
-        initial_schema().await.unwrap();
-        let post: Option<InsertPost> = insert_post("title".into(), Some(1)).await.unwrap();
-        let post = post.unwrap();
-        assert_eq!(post.title, "title");
-        assert_eq!(post.test, Some(1));
+        let _ = create_posts().await?;
+        let _ = initial_schema().await?;
+        let new_post = insert_post("title".into(), Some(1)).await?;
+        assert_eq!(new_post.title, "title");
+        assert_eq!(new_post.test, Some(1));
 
-        let post: SelectPost = select_post(1).await.unwrap().unwrap();
-        assert_eq!(post.id, 1);
-        assert_eq!(post.title, "title");
-        assert_eq!(post.test, Some(1));
+        let post= select_post(1).await?.unwrap();
+        assert_eq!(post, new_post);
 
-        let likes = like_post(1).await.unwrap().unwrap();
+        let likes = like_post(1).await?;
         assert_eq!(likes.post_id, 1);
-        let likes = select_likes(likes.id).await.unwrap();
+        let likes = select_likes(likes.id).await?;
         assert_eq!(likes[0].post_id, 1);
         assert_eq!(likes[0].title, "title");
 
-        let post = update_post("new title".into(), Some(2), 1)
-            .await
-            .unwrap()
-            .unwrap();
-
+        let post = update_post("new title".into(), Some(2), 1).await?;
         assert_eq!(post.id, 1);
         assert_eq!(post.title, "new title");
         assert_eq!(post.test, Some(2));
 
-        let _like = delete_like(1).await.unwrap();
-        let _post = delete_post(1).await.unwrap();
+        let _like = delete_like(1).await?;
+        let _post = delete_post(1).await?;
 
-        let posts = select_posts().await.unwrap();
+        let posts = select_posts().await?;
         assert_eq!(posts.len(), 0);
 
-        let post_count = post_count().await.unwrap();
+        let post_count = post_count().await?;
         assert_eq!(post_count, 0);
 
-        let _ = insert_select().await.unwrap();
-        let first_item = select_first_item().await.unwrap();
+        let _ = insert_select().await?;
+        let first_item = select_first_item().await?;
         assert_eq!(first_item.unwrap().value, 1);
 
-        let items = select_items().await.unwrap();
+        let items = select_items().await?;
         assert_eq!(1, items.first().unwrap().value);
         assert_eq!(10, items.last().unwrap().value);
+
+        Ok(())
     }
 }

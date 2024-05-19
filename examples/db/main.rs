@@ -28,11 +28,13 @@ routes!(
 embed_static_files!("examples/static_files/static");
 
 #[main]
-async fn main() {
-    create_todos().await.unwrap();
-    create_todos_content_ix().await.unwrap();
+async fn main() -> Result<()> {
+    let _ = create_todos().await?;
+    let _ = create_todos_content_ix().await?;
 
-    serve("::1:9001", routes()).await
+    serve("::1:9001", routes()).await;
+
+    Ok(())
 }
 
 async fn get_slash() -> Result<Html> {
@@ -48,13 +50,13 @@ async fn get_slash() -> Result<Html> {
 async fn post_todos(cx: Cx, Form(todo): Form<InsertTodo>) -> Result<Response> {
     let result = insert_todo(todo.content).await;
 
-    match result.map_err(Error::from) {
-        Ok(Some(_)) => Ok(redirect_to!(get_slash)),
+    match result {
+        Ok(_) => Ok(redirect_to!(get_slash)),
         Err(Error::UniqueConstraintFailed(_)) => {
             let todos = todos().await?;
             Ok(cx.render(html! { <GetSlash msg="todos already exists" todos=todos/> }))
         }
-        Ok(None) | Err(_) => return Err(Error::InternalServer),
+        Err(_) => return Err(Error::InternalServer),
     }
 }
 
@@ -76,13 +78,13 @@ async fn post_todos_edit(
 ) -> Result<Response> {
     let result = update_todo(todo.content, id).await;
 
-    match result.map_err(Error::from) {
-        Ok(Some(_)) => Ok(redirect_to!(get_slash)),
+    match result {
+        Ok(_) => Ok(redirect_to!(get_slash)),
         Err(Error::UniqueConstraintFailed(_)) => {
             let todos = todos().await?;
             Ok(cx.render(html! { <GetSlash msg="todos already exists" todos=todos/> }))
         }
-        Ok(None) | Err(_) => return Err(Error::InternalServer),
+        Err(_) => return Err(Error::InternalServer),
     }
 }
 
@@ -158,7 +160,7 @@ fn TodoListRow(todo: &Todos) -> Component {
 
 fn View(elements: Elements) -> Component {
     html! {
-        <!DOCTYPE html>
+        <!DOCTYPE html> 
         <html>
             <head>{render_static_files!()}</head>
             <body>{elements}</body>

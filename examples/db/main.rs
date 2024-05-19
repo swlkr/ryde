@@ -7,13 +7,13 @@ db!(
         id integer primary key,
         content text not null,
         created_at integer not null default(unixepoch())
-    )",
+    )" as Todo,
     create_todos_content_ix =
         "create unique index if not exists todos_content_ix on todos(content)",
-    insert_todo = "insert into todos (content) values (?) returning content",
-    update_todo = "update todos set content = ? where id = ? returning id, content",
-    delete_todo = "delete from todos where id = ?",
-    todo = "select todos.* from todos where id = ? limit 1",
+    insert_todo = "insert into todos (content) values (?) returning *" as Todo,
+    update_todo = "update todos set content = ? where id = ? returning *" as Todo,
+    delete_todo = "delete from todos where id = ? returning *" as Todo,
+    todo = "select todos.* from todos where id = ? limit 1" as Todo,
     todos = "select todos.* from todos order by created_at desc limit 30",
 );
 
@@ -42,19 +42,19 @@ async fn get_slash() -> Result<Html> {
 
     Ok(html! {
         <View>
-            <GetSlash msg="" todos=todos/>
+            <GetSlash error=None todos=todos/>
         </View>
     })
 }
 
-async fn post_todos(cx: Cx, Form(todo): Form<InsertTodo>) -> Result<Response> {
-    let result = insert_todo(todo.content).await;
+async fn post_todos(cx: Cx, Form(todo): Form<Todo>) -> Result<Response> {
+    let result = insert_todo(todo.content.clone()).await;
 
     match result {
         Ok(_) => Ok(redirect_to!(get_slash)),
         Err(Error::UniqueConstraintFailed(_)) => {
             let todos = todos().await?;
-            Ok(cx.render(html! { <GetSlash msg="todos already exists" todos=todos/> }))
+            Ok(cx.render(html! { <GetSlash error=Some(format!("{} already exists", todo.content)) todos=todos/> }))
         }
         Err(_) => return Err(Error::InternalServer),
     }
@@ -66,7 +66,7 @@ async fn get_todos_edit(Path(id): Path<i64>) -> Result<Html> {
     Ok(html! {
         <View>
             <h1>Edit todo</h1>
-            <EditTodoForm todo=&todo/>
+            <TodoForm todo=Some(todo)/>
         </View>
     })
 }
@@ -74,15 +74,15 @@ async fn get_todos_edit(Path(id): Path<i64>) -> Result<Html> {
 async fn post_todos_edit(
     cx: Cx,
     Path(id): Path<i64>,
-    Form(todo): Form<UpdateTodo>,
+    Form(todo): Form<Todo>,
 ) -> Result<Response> {
-    let result = update_todo(todo.content, id).await;
+    let result = update_todo(todo.content.clone(), id).await;
 
     match result {
         Ok(_) => Ok(redirect_to!(get_slash)),
         Err(Error::UniqueConstraintFailed(_)) => {
             let todos = todos().await?;
-            Ok(cx.render(html! { <GetSlash msg="todos already exists" todos=todos/> }))
+            Ok(cx.render(html! { <GetSlash error=Some(format!("{} already exists", todo.content)) todos=todos/> }))
         }
         Err(_) => return Err(Error::InternalServer),
     }
@@ -94,25 +94,20 @@ async fn post_todos_delete(Path(id): Path<i64>) -> Result<Response> {
     Ok(redirect_to!(get_slash))
 }
 
-fn NewTodoForm() -> Component {
-    let name = InsertTodo::names();
+fn TodoForm(todo: Option<Todo>) -> Component {
+    let name = Todo::names();
+    let action = match todo {
+        Some(ref todo) => url!(post_todos_edit, todo.id),
+        None => url!(post_todos),
+    };
+    let todo = todo.unwrap_or_default();
 
     html! {
-        <form method="post" action=url!(post_todos)>
-            <input type="text" name=name.content autofocus/>
-            <input type="submit" value="add"/>
-        </form>
-    }
-}
-
-fn EditTodoForm(todo: &Todo) -> Component {
-    let name = UpdateTodo::names();
-
-    html! {
-        <form method="post" action=url!(post_todos_edit, todo.id)>
-            <input type="text" name=name.content autofocus value=&todo.content/>
+        <form method="post" action=action>
+            <input type="text" name=name.content autofocus value=todo.content/>
             <input type="hidden" name=name.id value=todo.id/>
-            <input type="submit" value="add"/>
+            <input type="hidden" name=name.created_at value=0/>
+            <input type="submit" value="save"/>
         </form>
     }
 }
@@ -129,14 +124,14 @@ fn TodoList(todos: Vec<Todos>) -> Component {
     html! { <table>{todos.iter().map(TodoListRow)}</table> }
 }
 
-fn GetSlash(msg: &'static str, todos: Vec<Todos>) -> Component {
+fn GetSlash(error: Option<String>, todos: Vec<Todos>) -> Component {
     html! {
         <div>
             <h1>todos</h1>
             <div>
-                <NewTodoForm/>
+                <TodoForm todo=None/>
                 <TodoList todos=todos/>
-                <div>{msg}</div>
+                <div>{error}</div>
             </div>
         </div>
     }

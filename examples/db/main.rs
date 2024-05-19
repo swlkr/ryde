@@ -2,21 +2,6 @@
 
 use ryde::*;
 
-db!(
-    create_todos = "create table if not exists todos (
-        id integer primary key,
-        content text not null,
-        created_at integer not null default(unixepoch())
-    )" as Todo,
-    create_todos_content_ix =
-        "create unique index if not exists todos_content_ix on todos(content)",
-    insert_todo = "insert into todos (content) values (?) returning *" as Todo,
-    update_todo = "update todos set content = ? where id = ? returning *" as Todo,
-    delete_todo = "delete from todos where id = ? returning *" as Todo,
-    todo = "select todos.* from todos where id = ? limit 1" as Todo,
-    todos = "select todos.* from todos order by created_at desc limit 30",
-);
-
 routes!(
     ("/", get(get_slash)),
     ("/todos", post(post_todos)),
@@ -25,67 +10,48 @@ routes!(
     ("/*files", get(get_files))
 );
 
-embed_static_files!("examples/static_files/static");
-
 #[main]
 async fn main() -> Result<()> {
     let _ = create_todos().await?;
-    let _ = create_todos_content_ix().await?;
 
     serve("::1:9001", routes()).await;
 
     Ok(())
 }
 
-async fn get_slash() -> Result<Html> {
+async fn get_slash(cx: Cx) -> Result<Html> {
     let todos = todos().await?;
 
-    Ok(html! {
-        <View>
-            <GetSlash error=None todos=todos/>
-        </View>
-    })
+    Ok(cx.render(html! { <GetSlash todos=todos/> }))
 }
 
-async fn post_todos(cx: Cx, Form(todo): Form<Todo>) -> Result<Response> {
-    let result = insert_todo(todo.content.clone()).await;
-
-    match result {
-        Ok(_) => Ok(redirect_to!(get_slash)),
-        Err(Error::UniqueConstraintFailed(_)) => {
-            let todos = todos().await?;
-            Ok(cx.render(html! { <GetSlash error=Some(format!("{} already exists", todo.content)) todos=todos/> }))
-        }
-        Err(_) => return Err(Error::InternalServer),
-    }
+#[derive(Serialize, Deserialize)]
+struct TodoParams {
+    content: String
 }
 
-async fn get_todos_edit(Path(id): Path<i64>) -> Result<Html> {
+async fn post_todos(Form(form): Form<TodoParams>) -> Result<Response> {
+    let _ = insert_todo(form.content).await?;
+
+    Ok(redirect_to!(get_slash))
+}
+
+async fn get_todos_edit(cx: Cx, Path(id): Path<i64>) -> Result<Html> {
     let todo = todo(id).await?.ok_or(Error::NotFound)?;
 
-    Ok(html! {
-        <View>
-            <h1>Edit todo</h1>
-            <TodoForm todo=Some(todo)/>
-        </View>
-    })
+    Ok(cx.render(html! {
+        <h1>Edit todo</h1>
+        <TodoForm todo=Some(todo)/>
+    }))
 }
 
 async fn post_todos_edit(
-    cx: Cx,
     Path(id): Path<i64>,
-    Form(todo): Form<Todo>,
+    Form(form): Form<TodoParams>,
 ) -> Result<Response> {
-    let result = update_todo(todo.content.clone(), id).await;
+    let _todo = update_todo(form.content, id).await?;
 
-    match result {
-        Ok(_) => Ok(redirect_to!(get_slash)),
-        Err(Error::UniqueConstraintFailed(_)) => {
-            let todos = todos().await?;
-            Ok(cx.render(html! { <GetSlash error=Some(format!("{} already exists", todo.content)) todos=todos/> }))
-        }
-        Err(_) => return Err(Error::InternalServer),
-    }
+    Ok(redirect_to!(get_slash))
 }
 
 async fn post_todos_delete(Path(id): Path<i64>) -> Result<Response> {
@@ -106,7 +72,6 @@ fn TodoForm(todo: Option<Todo>) -> Component {
         <form method="post" action=action>
             <input type="text" name=name.content autofocus value=todo.content/>
             <input type="hidden" name=name.id value=todo.id/>
-            <input type="hidden" name=name.created_at value=0/>
             <input type="submit" value="save"/>
         </form>
     }
@@ -120,24 +85,23 @@ fn DeleteTodoForm(id: i64) -> Component {
     }
 }
 
-fn TodoList(todos: Vec<Todos>) -> Component {
+fn TodoList(todos: Vec<Todo>) -> Component {
     html! { <table>{todos.iter().map(TodoListRow)}</table> }
 }
 
-fn GetSlash(error: Option<String>, todos: Vec<Todos>) -> Component {
+fn GetSlash(todos: Vec<Todo>) -> Component {
     html! {
         <div>
             <h1>todos</h1>
             <div>
                 <TodoForm todo=None/>
                 <TodoList todos=todos/>
-                <div>{error}</div>
             </div>
         </div>
     }
 }
 
-fn TodoListRow(todo: &Todos) -> Component {
+fn TodoListRow(todo: &Todo) -> Component {
     html! {
         <tr>
             <td>{todo.id}</td>
@@ -166,8 +130,8 @@ fn View(elements: Elements) -> Component {
 struct Cx;
 
 impl Cx {
-    fn render(&self, elements: Elements) -> Response {
-        html! { <View>{elements}</View> }.into_response()
+    fn render(&self, elements: Elements) -> Html {
+        html! { <View>{elements}</View> }
     }
 }
 
@@ -185,3 +149,18 @@ where
         Ok(Cx {})
     }
 }
+
+db!(
+    create_todos = "create table if not exists todos (
+        id integer primary key,
+        content text not null,
+        created_at integer not null default(unixepoch())
+    )" as Todo,
+    insert_todo = "insert into todos (content) values (?)" as Todo,
+    update_todo = "update todos set content = ? where id = ? returning *" as Todo,
+    delete_todo = "delete from todos where id = ?",
+    todo = "select todos.* from todos where id = ? limit 1" as Todo,
+    todos = "select todos.* from todos order by created_at desc limit 30" as Vec<Todo>,
+);
+
+embed_static_files!("examples/static_files/static");

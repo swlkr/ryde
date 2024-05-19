@@ -44,22 +44,24 @@ mod tests {
                 id integer primary key not null,
                 title text not null,
                 test integer
-            )
-        " as Post,
-        initial_schema = "
+            )" as Post,
+        create_likes = "
             create table if not exists likes (
                 id integer primary key not null,
                 post_id integer not null references posts(id)
-            );
-            create table if not exists items (value integer not null);",
+            )" as Like,
+        create_items = "
+            create table if not exists items (
+                value integer not null
+            )" as Item,
         insert_post = "
             insert into posts (title, test)
             values (?, ?)
             returning *
         " as Post,
-        select_posts = "select id, title, test from posts", // TODO: as Vec<Post>
+        select_posts = "select posts.* from posts" as Vec<Post>,
         select_post = "select posts.* from posts where id = ? limit 1" as Post,
-        like_post = "insert into likes (post_id) values (?) returning id, post_id",
+        like_post = "insert into likes (post_id) values (?) returning *" as Like,
         select_likes = "
             select
                 likes.id,
@@ -76,7 +78,7 @@ mod tests {
             set title = ?, test = ?
             where id = ?
             returning *" as Post,
-        delete_like = "delete from likes where id = ?",
+        delete_like = "delete from likes where id = ? returning *" as Like,
         delete_post = "delete from posts where id = ? returning *" as Post,
         post_count = "select count(*) from posts",
         insert_select = "
@@ -86,15 +88,16 @@ mod tests {
               select value + 1 from all_items where value < 10
             )
             insert into items select value from all_items",
-        select_first_item = "select items.* from items order by items.value limit 1",
-        select_items = "select items.* from items order by items.value"
+        select_first_item = "select items.* from items order by items.value limit 1" as Item,
+        select_items = "select items.* from items order by items.value" as Vec<Item>
     );
 
     #[test]
     async fn it_works() -> ryde::Result<()> {
         std::env::set_var("DATABASE_URL", ":memory:");
         let _ = create_posts().await?;
-        let _ = initial_schema().await?;
+        let _ = create_likes().await?;
+        let _ = create_items().await?;
         let new_post = insert_post("title".into(), Some(1)).await?;
         assert_eq!(new_post.title, "title");
         assert_eq!(new_post.test, Some(1));

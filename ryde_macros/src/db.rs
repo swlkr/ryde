@@ -45,7 +45,7 @@ fn to_tokens(output: Output) -> TokenStream {
 fn stmt_tokens(output: Stmt) -> TokenStream {
     match output {
         Stmt::ExecuteBatch { ident, sql } => quote! {
-            pub async fn #ident() -> tokio_rusqlite::Result<()> {
+            pub async fn #ident() -> ryde::Result<()> {
                 connection()
                     .await
                     .call(move |conn| conn.execute_batch(#sql).map_err(|err| err.into()))
@@ -109,11 +109,11 @@ fn stmt_tokens(output: Stmt) -> TokenStream {
             in_cols,
             out_cols,
             ret,
-            struct_ident: struct_name,
+            cast,
         } => {
-            let struct_ident = match &struct_name {
-                Some(name) => name.clone(),
-                None => struct_ident(&ident),
+            let struct_ident = match &cast {
+                Cast::T(ident) | Cast::Vec(ident) => ident.clone(),
+                Cast::None => struct_ident(&ident),
             };
             let name_struct_ident = Ident::new(
                 &format!("{}Names", &struct_ident.to_string()),
@@ -154,9 +154,8 @@ fn stmt_tokens(output: Stmt) -> TokenStream {
                 ),
             };
 
-            let struct_tokens = match &struct_name {
-                Some(_) => quote! {},
-                None => quote! {
+            let struct_tokens = match &cast {
+                Cast::None => quote! {
                     #[derive(Default, Debug, Deserialize, Serialize, Clone, PartialEq)]
                     #[serde(crate = "crate::serde")]
                     pub struct #struct_ident {
@@ -175,6 +174,7 @@ fn stmt_tokens(output: Stmt) -> TokenStream {
 
                     pub struct #name_struct_ident { #(#name_struct_fields,)* }
                 },
+                Cast::T(_) | Cast::Vec(_) => quote! {},
             };
 
             let tokens = quote! {
@@ -199,13 +199,13 @@ fn stmt_tokens(output: Stmt) -> TokenStream {
         }
         Stmt::CreateTable {
             fn_ident,
-            struct_ident: struct_name,
+            cast,
             cols,
             sql,
         } => {
-            let struct_ident = match struct_name {
-                Some(n) => n,
-                None => struct_ident(&fn_ident),
+            let struct_ident = match cast {
+                Cast::T(ident) | Cast::Vec(ident) => ident,
+                Cast::None => struct_ident(&fn_ident),
             };
             let struct_fields: Vec<TokenStream> = cols.iter().map(column_tokens).collect();
             let instance_fields: Vec<TokenStream> = cols.iter().map(row_tokens).collect();
@@ -238,7 +238,7 @@ fn stmt_tokens(output: Stmt) -> TokenStream {
 
                 pub struct #name_struct_ident { #(#name_struct_fields,)* }
 
-                pub async fn #fn_ident() -> tokio_rusqlite::Result<()> {
+                pub async fn #fn_ident() -> ryde::Result<()> {
                     connection()
                         .await
                         .call(move |conn| conn.execute_batch(#sql).map_err(|err| err.into()))
@@ -265,19 +265,14 @@ fn to_stmt(db_columns: &HashSet<Column>, sql_expr: SqlExpr) -> Option<Stmt> {
         ident,
         sql,
         statements,
-        struct_ident,
+        cast,
     } = sql_expr;
     // last one is the only one that returns anything?
     match statements.last() {
         Some(stmt) => match stmt {
-            Statement::CreateTable { name, columns, .. } => create_table_stmt(
-                db_columns,
-                name.to_string(),
-                struct_ident,
-                ident,
-                sql,
-                columns,
-            ),
+            Statement::CreateTable { name, columns, .. } => {
+                create_table_stmt(db_columns, name.to_string(), cast, ident, sql, columns)
+            }
             Statement::Insert {
                 table_name,
                 columns,
@@ -292,7 +287,7 @@ fn to_stmt(db_columns: &HashSet<Column>, sql_expr: SqlExpr) -> Option<Stmt> {
                 columns,
                 returning,
                 source,
-                struct_ident,
+                cast,
             ),
             Statement::Update {
                 table,
@@ -309,25 +304,17 @@ fn to_stmt(db_columns: &HashSet<Column>, sql_expr: SqlExpr) -> Option<Stmt> {
                 from,
                 selection,
                 returning,
-                struct_ident,
+                cast,
             ),
             Statement::Delete {
                 from,
                 selection,
                 returning,
                 ..
-            } => delete_stmt(
-                db_columns,
-                ident,
-                sql,
-                from,
-                selection,
-                returning,
-                struct_ident,
-            ),
+            } => delete_stmt(db_columns, ident, sql, from, selection, returning, cast),
             Statement::Query(q) => {
                 let Query { body, limit, .. } = &**q;
-                query_stmt(db_columns, ident, sql, body, limit.as_ref(), struct_ident)
+                query_stmt(db_columns, ident, sql, body, limit.as_ref(), cast)
             }
             _ => Some(Stmt::ExecuteBatch { ident, sql }),
         },
@@ -338,7 +325,7 @@ fn to_stmt(db_columns: &HashSet<Column>, sql_expr: SqlExpr) -> Option<Stmt> {
 fn create_table_stmt(
     _db_columns: &HashSet<Column>,
     table_name: String,
-    struct_ident: Option<Ident>,
+    cast: Cast,
     fn_ident: Ident,
     sql: String,
     columns: &Vec<sqlparser::ast::ColumnDef>,
@@ -351,7 +338,7 @@ fn create_table_stmt(
     Some(Stmt::CreateTable {
         sql,
         fn_ident,
-        struct_ident,
+        cast,
         cols,
     })
 }
@@ -362,7 +349,7 @@ fn query_stmt(
     sql: String,
     body: &SetExpr,
     limit: Option<&sqlparser::ast::Expr>,
-    struct_ident: Option<Ident>,
+    cast: Cast,
 ) -> Option<Stmt> {
     let select = match body {
         SetExpr::Select(select) => select,
@@ -381,7 +368,7 @@ fn query_stmt(
                 columns,
                 returning,
                 source,
-                struct_ident,
+                cast,
             );
         }
         _ => {
@@ -415,7 +402,7 @@ fn query_stmt(
     };
     let out_cols = projection
         .iter()
-        .flat_map(|si| columns_from_select_item(&db_cols, si, struct_ident.as_ref()))
+        .flat_map(|si| columns_from_select_item(&db_cols, si, &cast))
         .collect::<Vec<_>>();
     let ret = match limit {
         Some(sqlparser::ast::Expr::Value(sqlparser::ast::Value::Number(number, _))) => {
@@ -449,7 +436,7 @@ fn query_stmt(
         in_cols,
         out_cols,
         ret,
-        struct_ident,
+        cast,
     })
 }
 
@@ -462,7 +449,7 @@ fn update_stmt(
     _from: &Option<TableWithJoins>,
     selection: &Option<sqlparser::ast::Expr>,
     returning: &Option<Vec<SelectItem>>,
-    struct_ident: Option<Ident>,
+    cast: Cast,
 ) -> Option<Stmt> {
     let table_names = table_names(table);
     let table_name = table_names.get(0);
@@ -479,7 +466,7 @@ fn update_stmt(
     let out_cols = match returning {
         Some(si) => si
             .iter()
-            .flat_map(|si| columns_from_select_item(&table_columns, si, struct_ident.as_ref()))
+            .flat_map(|si| columns_from_select_item(&table_columns, si, &cast))
             .collect::<Vec<_>>(),
         None => vec![],
     };
@@ -503,7 +490,7 @@ fn update_stmt(
             in_cols,
             out_cols,
             ret: QueryReturn::Row,
-            struct_ident,
+            cast,
         }),
         None => Some(Stmt::Execute {
             ident,
@@ -515,10 +502,7 @@ fn update_stmt(
 
 fn to_statement_expr(
     SqlExpr {
-        ident,
-        sql,
-        struct_ident,
-        ..
+        ident, sql, cast, ..
     }: SqlExpr,
 ) -> Option<SqlExpr> {
     let statements = match Parser::parse_sql(&SQLiteDialect {}, &sql) {
@@ -533,7 +517,7 @@ fn to_statement_expr(
         ident,
         sql,
         statements,
-        struct_ident,
+        cast,
     })
 }
 
@@ -606,7 +590,7 @@ fn insert_stmt(
     columns: &Vec<sqlparser::ast::Ident>,
     returning: &Option<Vec<SelectItem>>,
     source: &Option<Box<Query>>,
-    struct_ident: Option<Ident>,
+    cast: Cast,
 ) -> Option<Stmt> {
     // nice little compile time validation
     // check insert into count matches placeholder count
@@ -661,29 +645,22 @@ fn insert_stmt(
             let out_cols: Vec<Column> = match returning {
                 Some(si) => si
                     .iter()
-                    .flat_map(|si| {
-                        columns_from_select_item(&table_columns, si, struct_ident.as_ref())
-                    })
+                    .flat_map(|si| columns_from_select_item(&table_columns, si, &cast))
                     .collect(),
                 None => vec![],
             };
-            match struct_ident {
-                Some(_) => {
-                    for n in table_column_names.iter() {
-                        if !out_cols
-                            .iter()
-                            .map(|c| &c.name)
-                            .collect::<Vec<_>>()
-                            .contains(&n)
-                        {
-                            panic!(
-                                "in query {} column {} needs to be returned with table {} ",
-                                ident, n, table_name
-                            )
-                        }
-                    }
+            for n in table_column_names.iter() {
+                if !out_cols
+                    .iter()
+                    .map(|c| &c.name)
+                    .collect::<Vec<_>>()
+                    .contains(&n)
+                {
+                    panic!(
+                        "in query {} column {} needs to be returned with table {} ",
+                        ident, n, table_name
+                    )
                 }
-                None => {}
             }
             Some(Stmt::Query {
                 ident,
@@ -691,7 +668,7 @@ fn insert_stmt(
                 in_cols,
                 out_cols,
                 ret: QueryReturn::Row,
-                struct_ident,
+                cast,
             })
         }
         None => Some(Stmt::Execute {
@@ -709,7 +686,7 @@ fn delete_stmt(
     from: &Vec<TableWithJoins>,
     selection: &Option<sqlparser::ast::Expr>,
     returning: &Option<Vec<SelectItem>>,
-    struct_ident: Option<Ident>,
+    cast: Cast,
 ) -> Option<Stmt> {
     let table_names = from.iter().flat_map(|f| table_names(f)).collect::<Vec<_>>();
     let table_name = match table_names.first() {
@@ -728,15 +705,15 @@ fn delete_stmt(
     let out_cols = match returning {
         Some(si) => si
             .iter()
-            .flat_map(|si| columns_from_select_item(&table_columns, si, struct_ident.as_ref()))
+            .flat_map(|si| columns_from_select_item(&table_columns, si, &cast))
             .collect::<Vec<_>>(),
         None => vec![],
     };
 
     match returning {
         Some(_) => {
-            match struct_ident {
-                Some(_) => {
+            match &cast {
+                Cast::T(_) | Cast::Vec(_) => {
                     for n in table_columns.iter() {
                         if !out_cols
                             .iter()
@@ -751,7 +728,7 @@ fn delete_stmt(
                         }
                     }
                 }
-                None => {}
+                Cast::None => {}
             }
             Some(Stmt::Query {
                 ident,
@@ -759,7 +736,7 @@ fn delete_stmt(
                 in_cols,
                 out_cols,
                 ret: QueryReturn::Row,
-                struct_ident,
+                cast,
             })
         }
         _ => Some(Stmt::Execute {
@@ -815,7 +792,7 @@ fn columns_from_idents(
 fn columns_from_select_item(
     table_columns: &HashSet<Column>,
     select_item: &sqlparser::ast::SelectItem,
-    struct_ident: Option<&Ident>,
+    cast: &Cast,
 ) -> HashSet<Column> {
     match select_item {
         sqlparser::ast::SelectItem::UnnamedExpr(expr) => columns_from_expr(&table_columns, expr)
@@ -827,9 +804,9 @@ fn columns_from_select_item(
             .filter(|c| c.table_name == obj_name.to_string())
             .map(|c| c.clone())
             .collect::<HashSet<_>>(),
-        sqlparser::ast::SelectItem::Wildcard(_) => match struct_ident {
-            Some(_) => table_columns.clone(),
-            None => panic!("unqualified * not supported yet"),
+        sqlparser::ast::SelectItem::Wildcard(_) => match cast {
+            Cast::T(_) | Cast::Vec(_) => table_columns.clone(),
+            Cast::None => todo!("unqualified * not supported yet"),
         },
     }
 }
@@ -1066,7 +1043,7 @@ pub struct SqlExpr {
     ident: Ident,
     sql: String,
     statements: Vec<Statement>,
-    struct_ident: Option<Ident>,
+    cast: Cast,
 }
 
 #[derive(Debug)]
@@ -1097,7 +1074,7 @@ enum Stmt {
         in_cols: Vec<Column>,
     },
     Query {
-        struct_ident: Option<Ident>,
+        cast: Cast,
         ident: Ident,
         sql: String,
         in_cols: Vec<Column>,
@@ -1107,7 +1084,7 @@ enum Stmt {
     CreateTable {
         sql: String,
         fn_ident: Ident,
-        struct_ident: Option<Ident>,
+        cast: Cast,
         cols: Vec<Column>,
     },
 }
@@ -1116,17 +1093,62 @@ impl syn::parse::Parse for SqlExpr {
     fn parse(input: syn::parse::ParseStream) -> Result<Self> {
         let ident = input.parse::<Ident>()?;
         let _equal = input.parse::<Token![=]>()?;
-        let lit_str = input.parse::<LitStr>()?;
-        let _as = input.parse::<syn::token::As>().ok();
-        let struct_ident = input.parse::<Ident>().ok();
-
-        let sql = lit_str.value();
+        let (sql, cast) = if input.peek2(syn::token::As) {
+            let syn::ExprCast { expr, ty, .. } = input.parse::<syn::ExprCast>()?;
+            let sql = match &*expr {
+                syn::Expr::Lit(syn::ExprLit { lit, .. }) => match lit {
+                    syn::Lit::Str(lit_str) => lit_str.value(),
+                    _ => panic!("Expected string literal for sql"),
+                },
+                _ => panic!("Expected string literal for sql"),
+            };
+            let cast = match &*ty {
+                syn::Type::Path(syn::TypePath { path, .. }) => {
+                    let seg = path
+                        .segments
+                        .first()
+                        .expect("Only Vec<T> or T are supported");
+                    match seg.arguments {
+                        syn::PathArguments::None => Cast::T(
+                            path.get_ident()
+                                .cloned()
+                                .expect("Only Vec<T> or T are supported"),
+                        ),
+                        syn::PathArguments::AngleBracketed(ref args) => match args.args.first() {
+                            Some(syn::GenericArgument::Type(ty)) => match ty {
+                                syn::Type::Path(syn::TypePath { path, .. }) => Cast::Vec(
+                                    path.get_ident()
+                                        .cloned()
+                                        .expect("Only Vec<T> or T are supported"),
+                                ),
+                                _ => panic!("Only Vec<T> or T are support"),
+                            },
+                            _ => panic!("Only Vec<T> or T are support"),
+                        },
+                        syn::PathArguments::Parenthesized(_) => todo!(),
+                    }
+                }
+                _ => panic!("Only Vec<T> or T are supported"),
+            };
+            (sql, cast)
+        } else {
+            let lit_str = input.parse::<LitStr>()?;
+            (lit_str.value(), Cast::None)
+        };
 
         Ok(Self {
             ident,
             sql,
             statements: vec![],
-            struct_ident,
+            cast,
         })
     }
+}
+
+#[derive(Default, Debug, Clone)]
+enum Cast {
+    T(Ident),
+    Vec(Ident),
+    #[default]
+    None,
 }

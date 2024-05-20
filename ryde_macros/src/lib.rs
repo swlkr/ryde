@@ -9,9 +9,9 @@ use env::env_vars_macro;
 use html::{component_macro, html_macro};
 use proc_macro::TokenStream;
 use quote::ToTokens;
-use routes::{routes_macro, url_macro, StateRouter, Url};
+use routes::{router_macro, routes_macro, url_macro, StateRouter, Url};
 use static_files::static_files_macro;
-use syn::{parse_macro_input, punctuated::Punctuated, DeriveInput, Ident, Token};
+use syn::{parse_macro_input, punctuated::Punctuated, DeriveInput, Ident, ItemFn, Token};
 
 #[proc_macro]
 pub fn db(input: TokenStream) -> TokenStream {
@@ -26,6 +26,15 @@ pub fn db(input: TokenStream) -> TokenStream {
 pub fn routes(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as StateRouter);
     match routes_macro(input) {
+        Ok(s) => s.to_token_stream().into(),
+        Err(e) => e.to_compile_error().into(),
+    }
+}
+
+#[proc_macro_attribute]
+pub fn router(_args: TokenStream, input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as ItemFn);
+    match router_macro(input) {
         Ok(s) => s.to_token_stream().into(),
         Err(e) => e.to_compile_error().into(),
     }

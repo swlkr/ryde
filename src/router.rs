@@ -1,6 +1,6 @@
 extern crate self as router;
 
-pub use ryde_macros::{routes, url};
+pub use ryde_macros::{router, routes, url};
 
 #[cfg(test)]
 mod tests {
@@ -8,24 +8,27 @@ mod tests {
     use axum::{
         self,
         body::Body,
-        extract::{Path, Query},
-        http::{Request, StatusCode},
+        extract::{Path, Query, Request},
+        http::StatusCode,
         response::IntoResponse,
+        routing::get,
         Router,
     };
     use http_body_util::BodyExt;
     use serde::Deserialize;
     use tower::ServiceExt;
 
-    routes!(
-        ("/", get(index)),
-        ("/login", get(login_form).post(login).patch(login)),
-        ("/abc", get(abc)),
-        ("/xyz/:xyz", get(xyz))
-    );
+    #[router]
+    fn router() -> Router {
+        Router::new()
+            .route("/", get(get_slash))
+            .route("/login", get(login_form).post(login).patch(login))
+            .route("/abc", get(abc))
+            .route("/xyz/:xyz", get(xyz))
+    }
 
-    async fn index() -> impl IntoResponse {
-        url!(index)
+    async fn get_slash() -> impl IntoResponse {
+        url!(get_slash)
     }
 
     async fn login_form() -> impl IntoResponse {
@@ -42,6 +45,7 @@ mod tests {
     }
 
     async fn abc(Query(params): Query<Abc>) -> impl IntoResponse {
+        // TODO: let path = url!(abc, abc = params.abc.unwrap_or_default());
         let path = url!(abc);
         let query_string = format!("?abc={}", params.abc.unwrap_or_default());
 
@@ -54,7 +58,7 @@ mod tests {
 
     #[tokio::test]
     async fn it_works() -> Result<(), Box<dyn std::error::Error>> {
-        let router = routes();
+        let router = router();
 
         assert_eq!(
             (StatusCode::OK, "/".into()),
@@ -93,21 +97,23 @@ mod tests {
         use axum::extract::State;
         use std::sync::Arc;
 
-        routes!(("/", get(index)) with Arc<AppState>);
-
-        struct AppState {
-            #[allow(unused)]
-            a: String,
+        #[router]
+        fn router() -> Router {
+            Router::default()
+                .route("/", get(index))
+                .with_state(Arc::new(AppState("state".into())))
         }
 
-        async fn index(State(_s): State<Arc<AppState>>) -> String {
-            url!(index)
+        struct AppState(String);
+
+        async fn index(State(s): State<Arc<AppState>>) -> String {
+            format!("get / with {}", s.0)
         }
 
-        let app = routes().with_state(Arc::new(AppState { a: "".into() }));
+        let app = router();
 
         assert_eq!(
-            (StatusCode::OK, "/".into()),
+            (StatusCode::OK, "get / with state".into()),
             make_request(&app, "GET", "/").await
         );
 

@@ -34,7 +34,7 @@ fn Button(elements: Elements) -> Component {
 
 fn View(elements: Elements) -> Component {
     html! {
-        <!DOCTYPE html> 
+        <!DOCTYPE html>
         <html>
             <head>{render_static_files!()}</head>
             <body class="grid place-content-center h-svh dark:bg-gray-950 gray-100 text-gray-950 dark:text-white">

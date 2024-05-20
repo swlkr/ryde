@@ -27,7 +27,7 @@ async fn get_slash(cx: Cx) -> Result<Html> {
 
 #[derive(Serialize, Deserialize)]
 struct TodoParams {
-    content: String
+    content: String,
 }
 
 async fn post_todos(Form(form): Form<TodoParams>) -> Result<Response> {
@@ -45,10 +45,7 @@ async fn get_todos_edit(cx: Cx, Path(id): Path<i64>) -> Result<Html> {
     }))
 }
 
-async fn post_todos_edit(
-    Path(id): Path<i64>,
-    Form(form): Form<TodoParams>,
-) -> Result<Response> {
+async fn post_todos_edit(Path(id): Path<i64>, Form(form): Form<TodoParams>) -> Result<Response> {
     let _todo = update_todo(form.content, id).await?;
 
     Ok(redirect_to!(get_slash))
@@ -119,7 +116,7 @@ fn TodoListRow(todo: &Todo) -> Component {
 
 fn View(elements: Elements) -> Component {
     html! {
-        <!DOCTYPE html> 
+        <!DOCTYPE html>
         <html>
             <head>{render_static_files!()}</head>
             <body>{elements}</body>

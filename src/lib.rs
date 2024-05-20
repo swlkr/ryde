@@ -5,22 +5,23 @@ mod html;
 mod router;
 
 pub use axum;
-pub use axum::extract::*;
-pub use axum::http;
-pub use axum::http::header::*;
-pub use axum::http::Uri;
-pub use axum::response::*;
-pub use axum::*;
-pub use axum_extra::extract::*;
-pub use axum_extra::headers;
+pub use axum::{
+    extract::*,
+    http::{self, header::*, Uri},
+    response::*,
+    routing::{any, delete, get, head, patch, post, put, trace},
+    *,
+};
+pub use axum_extra::{extract::*, headers};
 pub use cookie::Cookie;
 pub use db::{connection, db, rusqlite, tokio_rusqlite, Connection};
 pub use html::{component, escape, html, Component, Elements, Render};
-pub use router::{routes, url};
+pub use router::{router, routes, url};
 pub use ryde_macros::{env_vars, StaticFiles};
 pub use serde;
 pub use serde::*;
 pub use std::fmt::Display;
+pub use std::sync::Arc;
 pub use tokio;
 pub use tokio::*;
 

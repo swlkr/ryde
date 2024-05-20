@@ -39,3 +39,6 @@ name = "db"
 
 [[example]]
 name = "protected"
+
+[[example]]
+name = "router_with_state"

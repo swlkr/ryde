@@ -1,8 +1,8 @@
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::quote;
 use sqlparser::ast::{
-    AlterTableOperation, Assignment, Query, Select, SelectItem, SetExpr, TableFactor,
-    TableWithJoins,
+    AlterTableOperation, Assignment, OnConflict, OnConflictAction, OnInsert, Query, Select,
+    SelectItem, SetExpr, TableFactor, TableWithJoins,
 };
 use sqlparser::{ast::Statement, dialect::SQLiteDialect, parser::Parser};
 use std::collections::HashSet;
@@ -278,6 +278,7 @@ fn to_stmt(db_columns: &HashSet<Column>, sql_expr: SqlExpr) -> Option<Stmt> {
                 columns,
                 returning,
                 source,
+                on,
                 ..
             } => insert_stmt(
                 db_columns,
@@ -288,6 +289,7 @@ fn to_stmt(db_columns: &HashSet<Column>, sql_expr: SqlExpr) -> Option<Stmt> {
                 returning,
                 source,
                 cast,
+                on,
             ),
             Statement::Update {
                 table,
@@ -358,6 +360,7 @@ fn query_stmt(
             columns,
             returning,
             source,
+            on,
             ..
         }) => {
             return insert_stmt(
@@ -369,6 +372,7 @@ fn query_stmt(
                 returning,
                 source,
                 cast,
+                on,
             );
         }
         _ => {
@@ -484,14 +488,27 @@ fn update_stmt(
     });
 
     match returning {
-        Some(_) => Some(Stmt::Query {
-            ident,
-            sql,
-            in_cols,
-            out_cols,
-            ret: QueryReturn::Row,
-            cast,
-        }),
+        Some(_) => {
+            if cast != Cast::None {
+                for tc in table_columns.iter() {
+                    if !out_cols.contains(&tc) {
+                        panic!(
+                            "in query {} column {} needs to be returned with table {} ",
+                            ident, tc.name, table_name
+                        )
+                    }
+                }
+            }
+
+            Some(Stmt::Query {
+                ident,
+                sql,
+                in_cols,
+                out_cols,
+                ret: QueryReturn::Row,
+                cast,
+            })
+        }
         None => Some(Stmt::Execute {
             ident,
             sql,
@@ -591,6 +608,7 @@ fn insert_stmt(
     returning: &Option<Vec<SelectItem>>,
     source: &Option<Box<Query>>,
     cast: Cast,
+    on: &Option<sqlparser::ast::OnInsert>,
 ) -> Option<Stmt> {
     // nice little compile time validation
     // check insert into count matches placeholder count
@@ -649,25 +667,35 @@ fn insert_stmt(
                     .collect(),
                 None => vec![],
             };
-            for n in table_column_names.iter() {
-                if !out_cols
-                    .iter()
-                    .map(|c| &c.name)
-                    .collect::<Vec<_>>()
-                    .contains(&n)
-                {
-                    panic!(
-                        "in query {} column {} needs to be returned with table {} ",
-                        ident, n, table_name
-                    )
+            if cast != Cast::None {
+                for n in table_column_names.iter() {
+                    if !out_cols
+                        .iter()
+                        .map(|c| &c.name)
+                        .collect::<Vec<_>>()
+                        .contains(&n)
+                    {
+                        panic!(
+                            "in query {} column {} needs to be returned with table {} ",
+                            ident, n, table_name
+                        )
+                    }
                 }
             }
+            let ret = match on {
+                Some(OnInsert::OnConflict(OnConflict {
+                    action: OnConflictAction::DoNothing,
+                    ..
+                })) => QueryReturn::OptionRow,
+                Some(_) | None => QueryReturn::Row,
+            };
+
             Some(Stmt::Query {
                 ident,
                 sql,
                 in_cols,
                 out_cols,
-                ret: QueryReturn::Row,
+                ret,
                 cast,
             })
         }
@@ -1145,7 +1173,7 @@ impl syn::parse::Parse for SqlExpr {
     }
 }
 
-#[derive(Default, Debug, Clone)]
+#[derive(Default, Debug, Clone, PartialEq)]
 enum Cast {
     T(Ident),
     Vec(Ident),

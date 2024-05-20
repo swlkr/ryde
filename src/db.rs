@@ -89,7 +89,8 @@ mod tests {
             )
             insert into items select value from all_items",
         select_first_item = "select items.* from items order by items.value limit 1" as Item,
-        select_items = "select items.* from items order by items.value" as Vec<Item>
+        select_items = "select items.* from items order by items.value" as Vec<Item>,
+        create_post = "insert into posts (id, title) values (?, ?) on conflict (id) do nothing returning *" as Post
     );
 
     #[test]
@@ -132,6 +133,12 @@ mod tests {
         let items = select_items().await?;
         assert_eq!(1, items.first().unwrap().value);
         assert_eq!(10, items.last().unwrap().value);
+
+        let post = create_post(1, String::default()).await?;
+        assert_eq!(true, post.is_some());
+
+        let post = create_post(1, String::default()).await?;
+        assert_eq!(None, post);
 
         Ok(())
     }

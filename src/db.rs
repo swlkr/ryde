@@ -90,7 +90,9 @@ mod tests {
             insert into items select value from all_items",
         select_first_item = "select items.* from items order by items.value limit 1" as Item,
         select_items = "select items.* from items order by items.value" as Vec<Item>,
-        create_post = "insert into posts (id, title) values (?, ?) on conflict (id) do nothing returning *" as Post
+        create_post =
+            "insert into posts (id, title) values (?, ?) on conflict (id) do nothing returning *"
+                as Post
     );
 
     #[test]
@@ -103,7 +105,7 @@ mod tests {
         assert_eq!(new_post.title, "title");
         assert_eq!(new_post.test, Some(1));
 
-        let post= select_post(1).await?.unwrap();
+        let post = select_post(1).await?.unwrap();
         assert_eq!(post, new_post);
 
         let likes = like_post(1).await?;

@@ -8,7 +8,6 @@ ryde is a single person, single file hypermedia web framework for rust
 cargo new your-project
 cd your-project
 cargo add ryde
-mkdir static
 ```
 
 # Quickstart
@@ -19,11 +18,8 @@ Open up your-project/src/main.rs in your favorite editor
 use ryde::*;
 
 routes!(
-    ("/", get(get_slash)),
-    ("/*files", get(get_files))
+    ("/", get(get_slash))
 );
-
-embed_static_files!("static");
 
 #[main]
 async fn main() {
@@ -32,16 +28,7 @@ async fn main() {
 
 async fn get_slash() -> Html {
     html! {
-        <!DOCTYPE html>
-        <html lang="en">
-            <head>
-                <title>ryde with rust</title>
-                {render_static_files!()}
-            </head>
-            <body>
-                <h1 class="text-2xl">ryde with rust</h1>
-            </body>
-        </html>
+        <h1>ryde with rust</h1>
     }
 }
 ```

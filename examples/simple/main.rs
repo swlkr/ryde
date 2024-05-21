@@ -12,7 +12,7 @@ async fn main() {
 
 async fn get_slash() -> Html {
     html! {
-        <!DOCTYPE html> 
+        <!DOCTYPE html>
         <html>
             <head>
                 <title>ryde with rust</title>

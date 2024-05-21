@@ -1,17 +1,19 @@
 use ryde::*;
 
-routes!(
-    ("/", get(index)),
-    ("/todos", post(post_todos)),
-    ("/todos/:id/edit", get(todos_edit)),
-    ("/todos/:id", put(todos_update)),
-    ("/orgs/:org_id/todos/:id", get(org_todos_update)),
-    ("/search", get(search))
-);
+#[router]
+fn router() -> Router {
+    Router::new()
+        .route("/", get(index))
+        .route("/todos", post(post_todos))
+        .route("/todos/:id/edit", get(todos_edit))
+        .route("/todos/:id", put(todos_update))
+        .route("/org/:org_id/todos/:id", get(org_todos_update))
+        .route("/search", get(search))
+}
 
 #[main]
 async fn main() {
-    serve("::1:9001", routes()).await
+    serve("::1:9001", router()).await
 }
 
 async fn index() -> String {

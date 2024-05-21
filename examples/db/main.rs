@@ -2,19 +2,21 @@
 
 use ryde::*;
 
-routes!(
-    ("/", get(get_slash)),
-    ("/todos", post(post_todos)),
-    ("/todos/:id/edit", get(get_todos_edit).post(post_todos_edit)),
-    ("/todos/:id/delete", post(post_todos_delete)),
-    ("/*files", get(get_files))
-);
+#[router]
+fn router() -> Router {
+    Router::new()
+        .route("/", get(get_slash))
+        .route("/todos", post(post_todos))
+        .route("/todos/:id/edit", get(get_todos_edit).post(post_todos_edit))
+        .route("/todos/:id/delete", post(post_todos_delete))
+        .route("/*files", get(get_files))
+}
 
 #[main]
 async fn main() -> Result<()> {
     let _ = create_todos().await?;
 
-    serve("::1:9001", routes()).await;
+    serve("::1:9001", router()).await;
 
     Ok(())
 }
@@ -150,10 +152,15 @@ where
 db!(
     create_todos = "create table if not exists todos (
         id integer primary key,
-        content text not null,
+        content text unique not null,
         created_at integer not null default(unixepoch())
     )" as Todo,
-    insert_todo = "insert into todos (content) values (?)" as Todo,
+    insert_todo = "
+        insert into todos (content)
+        values (?)
+        on conflict do
+        update set content = excluded.content
+        returning *" as Todo,
     update_todo = "update todos set content = ? where id = ? returning *" as Todo,
     delete_todo = "delete from todos where id = ?",
     todo = "select todos.* from todos where id = ? limit 1" as Todo,

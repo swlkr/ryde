@@ -2,11 +2,16 @@
 
 use ryde::*;
 
-routes!(("/", get(get_slash)), ("/protected", get(get_protected)));
+#[router]
+fn router() -> Router {
+    Router::new()
+        .route("/", get(get_slash))
+        .route("/protected", get(get_protected))
+}
 
 #[main]
 async fn main() {
-    serve("::1:9001", routes()).await
+    serve("::1:9001", router()).await
 }
 
 async fn get_slash(cx: Cx) -> Result<Html> {

@@ -2,13 +2,18 @@
 
 use ryde::*;
 
-routes!(("/", get(get_slash)), ("/*files", get(get_files)));
+#[router]
+fn router() -> Router {
+    Router::new()
+        .route("/", get(get_slash))
+        .route("/*files", get(get_files))
+}
 
 embed_static_files!("examples/html/static");
 
 #[main]
 async fn main() {
-    serve("::1:3000", routes()).await
+    serve("::1:3000", router()).await
 }
 
 async fn get_slash(uri: Uri) -> Html {

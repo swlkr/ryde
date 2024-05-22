@@ -20,6 +20,7 @@ pub use router::{router, routes, url};
 pub use ryde_macros::{env_vars, StaticFiles};
 pub use serde;
 pub use serde::*;
+use tokio::task::JoinError;
 pub use std::fmt::Display;
 pub use std::sync::Arc;
 pub use tokio;
@@ -86,6 +87,7 @@ pub enum Error {
     NotFound,
     InternalServer,
     Multipart(String),
+    Join(String)
 }
 
 impl std::fmt::Display for Error {
@@ -101,6 +103,7 @@ impl std::fmt::Display for Error {
             Error::NotFound => f.write_str("Error: Not found"),
             Error::InternalServer => f.write_str("Error: Internal server error"),
             Error::Multipart(e) => f.write_fmt(format_args!("Error: {}", e)),
+            Error::Join(x) => f.write_fmt(format_args!("{x}")),
         }
     }
 }
@@ -133,6 +136,7 @@ impl IntoResponse for Error {
                 422,
                 "Unprocessable entity from multipart form request".into(),
             ),
+            Error::Join(_) => (500, "internal server error".into()),
         };
         Response::builder()
             .status(status)
@@ -175,6 +179,12 @@ impl From<rusqlite::Error> for Error {
 impl From<std::io::Error> for Error {
     fn from(value: std::io::Error) -> Self {
         Error::Io(value.to_string())
+    }
+}
+
+impl From<JoinError> for Error {
+    fn from(value: JoinError) -> Self {
+        Error::Join(value.to_string())
     }
 }
 

@@ -5,7 +5,7 @@ mod routes;
 mod static_files;
 
 use db::{db_macro, SqlExpr};
-use env::env_vars_macro;
+use env::dotenv_macro;
 use html::{component_macro, html_macro};
 use proc_macro::TokenStream;
 use quote::ToTokens;
@@ -76,9 +76,8 @@ pub fn component(input: TokenStream) -> TokenStream {
 }
 
 #[proc_macro]
-pub fn env_vars(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input with Punctuated::<Ident, Token![,]>::parse_terminated);
-    match env_vars_macro(input) {
+pub fn dotenv(_input: TokenStream) -> TokenStream {
+    match dotenv_macro() {
         Ok(s) => s.to_token_stream().into(),
         Err(e) => e.to_compile_error().into(),
     }

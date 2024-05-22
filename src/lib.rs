@@ -17,7 +17,7 @@ pub use cookie::Cookie;
 pub use db::{connection, db, rusqlite, tokio_rusqlite, Connection};
 pub use html::{component, escape, html, Component, Elements, Render};
 pub use router::{router, routes, url};
-pub use ryde_macros::{env_vars, StaticFiles};
+pub use ryde_macros::{dotenv, StaticFiles};
 pub use serde;
 pub use serde::*;
 use tokio::task::JoinError;
@@ -228,21 +228,14 @@ macro_rules! embed_static_files {
 
 #[cfg(test)]
 mod tests {
-    use super::env_vars;
+    use super::dotenv;
+
+    dotenv!();
 
     #[test]
     fn env_works() {
-        std::env::set_var("HOME", "SWEET HOME");
-        std::env::set_var("HAVE_CAKE", "EAT IT TOO");
-        env_vars!(HOME, HAVE_CAKE);
-        // loads statics
-        env_vars();
-        assert_eq!(HOME(), "SWEET HOME");
-        // changing has no effect
-        std::env::set_var("HOME", "NO PLACE LIKE IT");
-        assert_eq!(HOME(), "SWEET HOME");
-
-        // n idents works
-        assert_eq!(HAVE_CAKE(), "EAT IT TOO");
+        let env= dotenv();
+        assert_eq!(env.hello, "WORLD");
+        assert_eq!(env.abc, "XYZ");
     }
 }

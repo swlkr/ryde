@@ -1,36 +1,47 @@
-use proc_macro2::TokenStream;
+use proc_macro2::{Span, TokenStream};
 use quote::quote;
-use syn::{punctuated::Punctuated, Ident, LitStr, Result, Token};
+use syn::{Ident, Result};
 
-pub fn env_vars_macro(input: Punctuated<Ident, Token![,]>) -> Result<TokenStream> {
-    let fns = input
-        .iter()
-        .map(|ident| {
-            let lit_str = LitStr::new(&ident.to_string(), ident.span());
+pub fn dotenv_macro() -> Result<TokenStream> {
+    let path = std::env::current_dir().unwrap().join(".env");
+    let s = std::fs::read_to_string(path)
+        .map_err(|_| syn::Error::new(Span::call_site(), ".env not found in current dir"))?;
 
-            quote! {
-                #[allow(non_snake_case)]
-                fn #ident() -> &'static str {
-                    static ENV_VAR: std::sync::OnceLock<String> = std::sync::OnceLock::new();
-                    ENV_VAR.get_or_init(|| std::env::var(#lit_str).expect(#lit_str))
-                }
-            }
+    let pairs = s
+        .lines()
+        .map(|line| line.split("=").map(|s| s.trim().trim_matches('"')))
+        .filter_map(|mut s| match (s.next(), s.next()) {
+            (Some(key), Some(value)) => Some((key, value)),
+            _ => None,
+        })
+        .map(|(key, value)| {
+            let ident = Ident::new(&key.to_lowercase(), Span::call_site());
+            (ident, value)
         })
         .collect::<Vec<_>>();
-    let calls = input
-        .iter()
-        .map(|ident| {
-            quote! {
-                let _ = #ident();
-            }
-        })
-        .collect::<Vec<_>>();
+
+    let fields = pairs.iter().map(|(ident, _value)| {
+        quote! {
+            #ident: String
+        }
+    });
+
+    let instance_fields = pairs.iter().map(|(ident, value)| {
+        quote! {
+            #ident: #value.into()
+        }
+    });
 
     Ok(quote! {
-        pub fn env_vars() {
-            #(#calls)*
+        #[derive(Clone, Debug, PartialEq)]
+        struct Env {
+            #(#fields,)*
         }
 
-        #(#fns)*
+        pub fn dotenv() -> Env {
+            Env {
+                #(#instance_fields,)*
+            }
+        }
     })
 }

@@ -2,7 +2,7 @@ use proc_macro2::{Span, TokenStream};
 use quote::quote;
 use syn::{Ident, Result};
 
-pub fn dotenv_macro() -> Result<TokenStream> {
+pub fn dotenv_macro(input: Ident) -> Result<TokenStream> {
     let path = std::env::current_dir().unwrap().join(".env");
     let s = std::fs::read_to_string(path)
         .map_err(|_| syn::Error::new(Span::call_site(), ".env not found in current dir"))?;
@@ -22,26 +22,22 @@ pub fn dotenv_macro() -> Result<TokenStream> {
 
     let fields = pairs.iter().map(|(ident, _value)| {
         quote! {
-            #ident: String
+            #ident: &'static str
         }
     });
 
     let instance_fields = pairs.iter().map(|(ident, value)| {
         quote! {
-            #ident: #value.into()
+            #ident: #value
         }
     });
 
     Ok(quote! {
-        #[derive(Clone, Debug, PartialEq)]
-        struct Env {
+        #[derive(Clone, Debug, PartialEq, Default)]
+        struct DotEnv {
             #(#fields,)*
         }
 
-        pub fn dotenv() -> Env {
-            Env {
-                #(#instance_fields,)*
-            }
-        }
+        pub const #input: DotEnv = DotEnv { #(#instance_fields,)* };
     })
 }

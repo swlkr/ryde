@@ -3,43 +3,46 @@
 use ryde::*;
 
 #[router]
-fn router() -> Router {
+fn router(cx: Cx) -> Router {
     Router::new()
         .route("/", get(get_slash))
-        .route("/todos", post(post_todos))
-        .route("/todos/:id/edit", get(get_todos_edit).post(post_todos_edit))
-        .route("/todos/:id/delete", post(post_todos_delete))
-        .route("/*files", get(get_files))
+        .route("/todos", post(todos_create))
+        .route("/todos/:id/edit", get(todos_edit).post(todos_update))
+        .route("/todos/:id/delete", post(todos_delete))
+        .with_state(cx)
 }
+
+dotenv!(ENV);
 
 #[main]
 async fn main() -> Result<()> {
-    let _ = create_todos().await?;
-
-    serve("::1:9001", router()).await;
+    let db = db(ENV.database_url).await?;
+    let _ = db.create_todos().await?;
+    let cx = Cx { db };
+    serve("::1:9001", router(cx)).await;
 
     Ok(())
 }
 
-async fn get_slash(cx: Cx) -> Result<Html> {
-    let todos = todos().await?;
+async fn get_slash(cx: Cx, db: Db) -> Result<Html> {
+    let todos = db.todos().await?;
 
     Ok(cx.render(html! { <GetSlash todos=todos/> }))
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Deserialize)]
 struct TodoParams {
     content: String,
 }
 
-async fn post_todos(Form(form): Form<TodoParams>) -> Result<Response> {
-    let _ = insert_todo(form.content).await?;
+async fn todos_create(db: Db, Form(form): Form<TodoParams>) -> Result<Response> {
+    let _todo = db.insert_todo(form.content).await?;
 
     Ok(redirect_to!(get_slash))
 }
 
-async fn get_todos_edit(cx: Cx, Path(id): Path<i64>) -> Result<Html> {
-    let todo = todo(id).await?.ok_or(Error::NotFound)?;
+async fn todos_edit(cx: Cx, db: Db, Path(id): Path<i64>) -> Result<Html> {
+    let todo = db.todo(id).await?.ok_or(Error::NotFound)?;
 
     Ok(cx.render(html! {
         <h1>Edit todo</h1>
@@ -47,14 +50,14 @@ async fn get_todos_edit(cx: Cx, Path(id): Path<i64>) -> Result<Html> {
     }))
 }
 
-async fn post_todos_edit(Path(id): Path<i64>, Form(form): Form<TodoParams>) -> Result<Response> {
-    let _todo = update_todo(form.content, id).await?;
+async fn todos_update(db: Db, Path(id): Path<i64>, Form(form): Form<TodoParams>) -> Result<Response> {
+    let _todo = db.update_todo(form.content, id).await?;
 
     Ok(redirect_to!(get_slash))
 }
 
-async fn post_todos_delete(Path(id): Path<i64>) -> Result<Response> {
-    let _ = delete_todo(id).await?;
+async fn todos_delete(db: Db, Path(id): Path<i64>) -> Result<Response> {
+    let _ = db.delete_todo(id).await?;
 
     Ok(redirect_to!(get_slash))
 }
@@ -62,15 +65,14 @@ async fn post_todos_delete(Path(id): Path<i64>) -> Result<Response> {
 fn TodoForm(todo: Option<Todo>) -> Component {
     let name = Todo::names();
     let action = match todo {
-        Some(ref todo) => url!(post_todos_edit, todo.id),
-        None => url!(post_todos),
+        Some(ref todo) => url!(todos_update, todo.id),
+        None => url!(todos_create),
     };
     let todo = todo.unwrap_or_default();
 
     html! {
         <form method="post" action=action>
             <input type="text" name=name.content autofocus value=todo.content/>
-            <input type="hidden" name=name.id value=todo.id/>
             <input type="submit" value="save"/>
         </form>
     }
@@ -78,7 +80,7 @@ fn TodoForm(todo: Option<Todo>) -> Component {
 
 fn DeleteTodoForm(id: i64) -> Component {
     html! {
-        <form method="post" action=url!(post_todos_delete, id)>
+        <form method="post" action=url!(todos_delete, id)>
             <input type="submit" value="delete"/>
         </form>
     }
@@ -107,7 +109,7 @@ fn TodoListRow(todo: &Todo) -> Component {
             <td>{&todo.content}</td>
             <td>{todo.created_at}</td>
             <td>
-                <a href=url!(get_todos_edit, todo.id)>edit</a>
+                <a href=url!(todos_edit, todo.id)>edit</a>
             </td>
             <td>
                 <DeleteTodoForm id=todo.id/>
@@ -118,34 +120,24 @@ fn TodoListRow(todo: &Todo) -> Component {
 
 fn View(elements: Elements) -> Component {
     html! {
-        <!DOCTYPE html>
+        <!DOCTYPE html> 
         <html>
-            <head>{render_static_files!()}</head>
+            <head>
+                <title>ryde db example</title>
+            </head>
             <body>{elements}</body>
         </html>
     }
 }
 
-struct Cx;
+#[derive(Clone, RequestParts)]
+struct Cx {
+    db: Db
+}
 
 impl Cx {
     fn render(&self, elements: Elements) -> Html {
         html! { <View>{elements}</View> }
-    }
-}
-
-#[async_trait]
-impl<S> FromRequestParts<S> for Cx
-where
-    S: Send + Sync,
-{
-    type Rejection = Response;
-
-    async fn from_request_parts(
-        _parts: &mut axum::http::request::Parts,
-        _state: &S,
-    ) -> std::result::Result<Self, Self::Rejection> {
-        Ok(Cx {})
     }
 }
 
@@ -166,5 +158,3 @@ db!(
     todo = "select todos.* from todos where id = ? limit 1" as Todo,
     todos = "select todos.* from todos order by created_at desc limit 30" as Vec<Todo>,
 );
-
-embed_static_files!("examples/static_files/static");

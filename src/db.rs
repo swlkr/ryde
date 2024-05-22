@@ -1,36 +1,7 @@
-use std::sync::OnceLock;
-
 pub use rusqlite;
 pub use ryde_macros::db;
 pub use tokio_rusqlite::{self, Connection};
 extern crate self as ryde_db;
-
-static CONNECTION: OnceLock<Connection> = OnceLock::new();
-
-pub async fn connection() -> &'static Connection {
-    let database_url = std::env::var("DATABASE_URL").unwrap_or("db.sqlite3".into());
-    match CONNECTION.get() {
-        Some(connection) => connection,
-        None => {
-            let connection = Connection::open(database_url)
-                .await
-                .expect("Failed to connect to db");
-            connection
-                .call(|conn| {
-                    conn.execute_batch(
-                        "PRAGMA foreign_keys = ON;
-                        PRAGMA journal_mode = WAL;
-                        PRAGMA synchronous = NORMAL;",
-                    )
-                    .map_err(|err| err.into())
-                })
-                .await
-                .expect("Failed to connect to db");
-            CONNECTION.set(connection).expect("Failed to connect to db");
-            CONNECTION.get().expect("Failed to connect to db")
-        }
-    }
-}
 
 #[cfg(test)]
 mod tests {
@@ -97,49 +68,49 @@ mod tests {
 
     #[test]
     async fn it_works() -> ryde::Result<()> {
-        std::env::set_var("DATABASE_URL", ":memory:");
-        let _ = create_posts().await?;
-        let _ = create_likes().await?;
-        let _ = create_items().await?;
-        let new_post = insert_post("title".into(), Some(1)).await?;
+        let db = db(":memory:").await?;
+        let _ = db.create_posts().await?;
+        let _ = db.create_likes().await?;
+        let _ = db.create_items().await?;
+        let new_post = db.insert_post("title".into(), Some(1)).await?;
         assert_eq!(new_post.title, "title");
         assert_eq!(new_post.test, Some(1));
 
-        let post = select_post(1).await?.unwrap();
+        let post = db.select_post(1).await?.unwrap();
         assert_eq!(post, new_post);
 
-        let likes = like_post(1).await?;
+        let likes = db.like_post(1).await?;
         assert_eq!(likes.post_id, 1);
-        let likes = select_likes(likes.id).await?;
+        let likes = db.select_likes(likes.id).await?;
         assert_eq!(likes[0].post_id, 1);
         assert_eq!(likes[0].title, "title");
 
-        let post = update_post("new title".into(), Some(2), 1).await?;
+        let post = db.update_post("new title".into(), Some(2), 1).await?;
         assert_eq!(post.id, 1);
         assert_eq!(post.title, "new title");
         assert_eq!(post.test, Some(2));
 
-        let _like = delete_like(1).await?;
-        let _post = delete_post(1).await?;
+        let _like = db.delete_like(1).await?;
+        let _post = db.delete_post(1).await?;
 
-        let posts = select_posts().await?;
+        let posts = db.select_posts().await?;
         assert_eq!(posts.len(), 0);
 
-        let post_count = post_count().await?;
+        let post_count = db.post_count().await?;
         assert_eq!(post_count, 0);
 
-        let _ = insert_select().await?;
-        let first_item = select_first_item().await?;
+        let _ = db.insert_select().await?;
+        let first_item = db.select_first_item().await?;
         assert_eq!(first_item.unwrap().value, 1);
 
-        let items = select_items().await?;
+        let items = db.select_items().await?;
         assert_eq!(1, items.first().unwrap().value);
         assert_eq!(10, items.last().unwrap().value);
 
-        let post = create_post(1, String::default()).await?;
+        let post = db.create_post(1, String::default()).await?;
         assert_eq!(true, post.is_some());
 
-        let post = create_post(1, String::default()).await?;
+        let post = db.create_post(1, String::default()).await?;
         assert_eq!(None, post);
 
         Ok(())

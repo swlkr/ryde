@@ -14,10 +14,10 @@ pub use axum::{
 };
 pub use axum_extra::{extract::*, headers};
 pub use cookie::Cookie;
-pub use db::{connection, db, rusqlite, tokio_rusqlite, Connection};
+pub use db::{db, rusqlite, tokio_rusqlite, Connection};
 pub use html::{component, escape, html, Component, Elements, Render};
 pub use router::{router, routes, url};
-pub use ryde_macros::{dotenv, StaticFiles};
+pub use ryde_macros::{dotenv, StaticFiles, RequestParts};
 pub use serde;
 pub use serde::*;
 use tokio::task::JoinError;
@@ -230,12 +230,11 @@ macro_rules! embed_static_files {
 mod tests {
     use super::dotenv;
 
-    dotenv!();
+    dotenv!(ENV);
 
     #[test]
     fn env_works() {
-        let env= dotenv();
-        assert_eq!(env.hello, "WORLD");
-        assert_eq!(env.abc, "XYZ");
+        assert_eq!(ENV.hello, "WORLD");
+        assert_eq!(ENV.abc, "XYZ");
     }
 }

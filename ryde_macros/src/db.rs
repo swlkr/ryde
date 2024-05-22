@@ -37,22 +37,54 @@ fn to_output(input: Input) -> Output {
 }
 
 fn to_tokens(output: Output) -> TokenStream {
+    let traits: Vec<TokenStream> = output.stmts.iter().map(trait_tokens).collect();
+    let impls: Vec<TokenStream> = output.stmts.iter().map(impl_tokens).collect();
     let tokens: Vec<TokenStream> = output.stmts.into_iter().map(stmt_tokens).collect();
 
-    quote! { #(#tokens)* }
+    quote! {
+        #(#tokens)*
+
+        #[derive(Clone)]
+        pub struct Db(tokio_rusqlite::Connection);
+
+        pub async fn db(database_url: impl AsRef<std::path::Path>) -> ryde::Result<Db> {
+            let connection = Connection::open(database_url).await?;
+            connection
+                .call(|conn| {
+                    conn.execute_batch(
+                        "PRAGMA foreign_keys = ON;
+                        PRAGMA journal_mode = WAL;
+                        PRAGMA synchronous = NORMAL;",
+                    )
+                    .map_err(|err| err.into())
+                })
+                .await?;
+
+            Ok(Db(connection))
+        }
+
+        pub trait Queries {
+            #(#traits)*
+        }
+
+        impl Queries for Db {
+            #(#impls)*
+        }
+    }
 }
 
-fn stmt_tokens(output: Stmt) -> TokenStream {
+fn impl_tokens(output: &Stmt) -> TokenStream {
     match output {
         Stmt::ExecuteBatch { ident, sql } => quote! {
-            pub async fn #ident() -> ryde::Result<()> {
-                connection()
-                    .await
+            async fn #ident(&self) -> ryde::Result<()> {
+                self
+                    .0
                     .call(move |conn| conn.execute_batch(#sql).map_err(|err| err.into()))
                     .await?;
 
                 Ok(())
             }
+
         },
         Stmt::Execute {
             ident,
@@ -63,9 +95,9 @@ fn stmt_tokens(output: Stmt) -> TokenStream {
             let param_fields: Vec<TokenStream> = in_cols.iter().map(param_tokens).collect();
 
             quote! {
-                pub async fn #ident(#(#fn_args,)*) -> ryde::Result<usize> {
-                    Ok(connection()
-                        .await
+                async fn #ident(&self, #(#fn_args,)*) -> ryde::Result<usize> {
+                    Ok(self
+                        .0
                         .call(move |conn| {
                             let params = tokio_rusqlite::params![#(#param_fields,)*];
                             conn.execute(#sql, params).map_err(|err| err.into())
@@ -83,9 +115,8 @@ fn stmt_tokens(output: Stmt) -> TokenStream {
             let param_fields: Vec<TokenStream> = in_cols.iter().map(param_tokens).collect();
 
             quote! {
-                 pub async fn #ident(#(#fn_args,)*) -> ryde::Result<i64> {
-                    let result = connection()
-                        .await
+                 async fn #ident(&self, #(#fn_args,)*) -> ryde::Result<i64> {
+                    let result = self.0
                         .call(move |conn| {
                             let mut stmt = conn.prepare(#sql)?;
                             let params = tokio_rusqlite::params![#(#param_fields,)*];
@@ -104,27 +135,17 @@ fn stmt_tokens(output: Stmt) -> TokenStream {
             }
         }
         Stmt::Query {
+            cast,
             ident,
             sql,
             in_cols,
-            out_cols,
             ret,
-            cast,
+            ..
         } => {
             let struct_ident = match &cast {
                 Cast::T(ident) | Cast::Vec(ident) => ident.clone(),
                 Cast::None => struct_ident(&ident),
             };
-            let name_struct_ident = Ident::new(
-                &format!("{}Names", &struct_ident.to_string()),
-                Span::call_site(),
-            );
-            let name_struct_fields: Vec<TokenStream> =
-                in_cols.iter().map(name_struct_tokens).collect();
-            let name_struct_self_fields: Vec<TokenStream> =
-                in_cols.iter().map(name_struct_self_tokens).collect();
-            let struct_fields: Vec<TokenStream> = out_cols.iter().map(column_tokens).collect();
-            let instance_fields: Vec<TokenStream> = out_cols.iter().map(row_tokens).collect();
             let fn_args: Vec<TokenStream> = in_cols.iter().map(fn_tokens).collect();
             let param_fields: Vec<TokenStream> = in_cols.iter().map(param_tokens).collect();
             let (return_statement, return_type) = match ret {
@@ -153,6 +174,107 @@ fn stmt_tokens(output: Stmt) -> TokenStream {
                     quote! { Vec<#struct_ident> },
                 ),
             };
+            quote! {
+                async fn #ident(&self, #(#fn_args,)*) -> ryde::Result<#return_type> {
+                    Ok(self.0
+                        .call(move |conn| {
+                            let mut stmt = conn.prepare(#sql)?;
+                            let params = tokio_rusqlite::params![#(#param_fields,)*];
+                            let rows = stmt
+                                .query_map(params, |row| #struct_ident::new(row))?
+                                .collect::<rusqlite::Result<Vec<#struct_ident>>>();
+                            #return_statement
+                        })
+                        .await?)
+                }
+            }
+        }
+        Stmt::CreateTable { sql, fn_ident, .. } => {
+            quote! {
+                async fn #fn_ident(&self) -> ryde::Result<()> {
+                    self.0
+                        .call(move |conn| conn.execute_batch(#sql).map_err(|err| err.into()))
+                        .await?;
+
+                    Ok(())
+                }
+            }
+        }
+    }
+}
+
+fn trait_tokens(output: &Stmt) -> TokenStream {
+    match output {
+        Stmt::ExecuteBatch { ident, .. } => quote! {
+            async fn #ident(&self) -> ryde::Result<()>;
+        },
+        Stmt::Execute { ident, in_cols, .. } => {
+            let fn_args: Vec<TokenStream> = in_cols.iter().map(fn_tokens).collect();
+
+            quote! {
+                async fn #ident(&self, #(#fn_args,)*) -> ryde::Result<usize>;
+            }
+        }
+        Stmt::AggQuery { ident, in_cols, .. } => {
+            let fn_args: Vec<TokenStream> = in_cols.iter().map(fn_tokens).collect();
+            quote! {
+                async fn #ident(&self, #(#fn_args,)*) -> ryde::Result<i64>;
+            }
+        }
+        Stmt::Query {
+            cast,
+            ident,
+            in_cols,
+            ret,
+            ..
+        } => {
+            let struct_ident = match &cast {
+                Cast::T(ident) | Cast::Vec(ident) => ident.clone(),
+                Cast::None => struct_ident(&ident),
+            };
+            let fn_args: Vec<TokenStream> = in_cols.iter().map(fn_tokens).collect();
+            let return_type = match ret {
+                QueryReturn::Row => quote! { #struct_ident },
+                QueryReturn::OptionRow => quote! { Option<#struct_ident> },
+                QueryReturn::Rows => quote! { Vec<#struct_ident> },
+            };
+
+            quote! {
+                async fn #ident(&self, #(#fn_args,)*) -> ryde::Result<#return_type>;
+            }
+        }
+        Stmt::CreateTable { fn_ident, .. } => {
+            quote! {
+                async fn #fn_ident(&self) -> ryde::Result<()>;
+            }
+        }
+    }
+}
+
+fn stmt_tokens(output: Stmt) -> TokenStream {
+    match output {
+        Stmt::ExecuteBatch { .. } | Stmt::Execute { .. } | Stmt::AggQuery { .. } => quote! {},
+        Stmt::Query {
+            ident,
+            in_cols,
+            out_cols,
+            cast,
+            ..
+        } => {
+            let struct_ident = match &cast {
+                Cast::T(ident) | Cast::Vec(ident) => ident.clone(),
+                Cast::None => struct_ident(&ident),
+            };
+            let name_struct_ident = Ident::new(
+                &format!("{}Names", &struct_ident.to_string()),
+                Span::call_site(),
+            );
+            let name_struct_fields: Vec<TokenStream> =
+                in_cols.iter().map(name_struct_tokens).collect();
+            let name_struct_self_fields: Vec<TokenStream> =
+                in_cols.iter().map(name_struct_self_tokens).collect();
+            let struct_fields: Vec<TokenStream> = out_cols.iter().map(column_tokens).collect();
+            let instance_fields: Vec<TokenStream> = out_cols.iter().map(row_tokens).collect();
 
             let struct_tokens = match &cast {
                 Cast::None => quote! {
@@ -177,31 +299,15 @@ fn stmt_tokens(output: Stmt) -> TokenStream {
                 Cast::T(_) | Cast::Vec(_) => quote! {},
             };
 
-            let tokens = quote! {
+            quote! {
                 #struct_tokens
-
-                pub async fn #ident(#(#fn_args,)*) -> ryde::Result<#return_type> {
-                    Ok(connection()
-                        .await
-                        .call(move |conn| {
-                            let mut stmt = conn.prepare(#sql)?;
-                            let params = tokio_rusqlite::params![#(#param_fields,)*];
-                            let rows = stmt
-                                .query_map(params, |row| #struct_ident::new(row))?
-                                .collect::<rusqlite::Result<Vec<#struct_ident>>>();
-                            #return_statement
-                        })
-                        .await?)
-                }
-            };
-
-            tokens
+            }
         }
         Stmt::CreateTable {
             fn_ident,
             cast,
             cols,
-            sql,
+            ..
         } => {
             let struct_ident = match cast {
                 Cast::T(ident) | Cast::Vec(ident) => ident,
@@ -237,15 +343,6 @@ fn stmt_tokens(output: Stmt) -> TokenStream {
                 }
 
                 pub struct #name_struct_ident { #(#name_struct_fields,)* }
-
-                pub async fn #fn_ident() -> ryde::Result<()> {
-                    connection()
-                        .await
-                        .call(move |conn| conn.execute_batch(#sql).map_err(|err| err.into()))
-                        .await?;
-
-                    Ok(())
-                }
             };
 
             tokens

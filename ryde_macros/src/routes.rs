@@ -76,8 +76,10 @@ fn router(expr: &Box<Expr>, lit_str: Option<&LitStr>, output: &mut Vec<(String, 
                                 Expr::Path(ExprPath { path, .. }) => {
                                     let ident = path.get_ident();
                                     // 2. look for get, post, put, delete, patch, trace, head
-                                    let route = find_route(ident, args, lit_str);
-                                    output.push(route);
+                                    match find_route(ident, args, lit_str) {
+                                        Some(route) => output.push(route),
+                                        None => {}
+                                    }
                                 }
                                 _ => unimplemented!(),
                             }
@@ -91,8 +93,12 @@ fn router(expr: &Box<Expr>, lit_str: Option<&LitStr>, output: &mut Vec<(String, 
                             args,
                             ..
                         })] => {
-                            let route = find_route(Some(method), args, lit_str);
-                            output.push(route);
+                            match find_route(Some(method), args, lit_str) {
+                                Some(route) => {
+                                    output.push(route);
+                                }
+                                None => {}
+                            };
                             router(receiver, Some(lit_str), output);
                         }
                         _ => todo!(),
@@ -106,10 +112,10 @@ fn router(expr: &Box<Expr>, lit_str: Option<&LitStr>, output: &mut Vec<(String, 
             Expr::Path(ExprPath { path, .. }) => {
                 let ident = path.get_ident();
                 match lit_str {
-                    Some(lit_str) => {
-                        let route = find_route(ident, args, lit_str);
-                        output.push(route);
-                    }
+                    Some(lit_str) => match find_route(ident, args, lit_str) {
+                        Some(route) => output.push(route),
+                        None => {}
+                    },
                     None => {}
                 }
             }
@@ -123,20 +129,20 @@ fn find_route(
     ident: Option<&Ident>,
     args: &Punctuated<Expr, syn::token::Comma>,
     lit_str: &LitStr,
-) -> (String, Ident) {
+) -> Option<(String, Ident)> {
     match ident {
         Some(ident) => match ident.to_string().as_str() {
             "get" | "post" | "put" | "patch" | "delete" | "trace" | "head" => {
                 // 3. finally get name of handler ident (only idents are supported)
                 match args.last() {
                     Some(&Expr::Path(ExprPath { ref path, .. })) => match path.get_ident() {
-                        Some(ident) => (lit_str.value(), ident.clone()),
+                        Some(ident) => Some((lit_str.value(), ident.clone())),
                         None => unimplemented!("Only fn handlers are supported."),
                     },
                     Some(_) | None => unimplemented!("Only fn handlers are supported."),
                 }
             }
-            _ => unimplemented!("Unaliased imports for http method fns are supported."),
+            _ => None,
         },
         None => todo!("Failed when looking for http method ident"),
     }

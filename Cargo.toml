@@ -13,7 +13,7 @@ axum = { version = "0.7", features = ["macros"] }
 axum-extra = { version = "0.9", features = ["cookie", "typed-header", "multipart"] }
 itoa = "1.0"
 http-body-util = "0.1"
-rusqlite = "0.31"
+rusqlite = { version = "0.31", features = ["bundled"] }
 ryde_macros = { path = "ryde_macros", version = "0.1.0" }
 ryu = "1.0"
 seq-macro = "0.3"

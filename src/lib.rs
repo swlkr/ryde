@@ -17,13 +17,13 @@ pub use cookie::Cookie;
 pub use db::{db, rusqlite, tokio_rusqlite, Connection};
 pub use html::{component, escape, html, Component, Elements, Render};
 pub use router::{router, routes, url};
-pub use ryde_macros::{dotenv, StaticFiles, RequestParts};
+pub use ryde_macros::{RequestParts, StaticFiles};
 pub use serde;
 pub use serde::*;
-use tokio::task::JoinError;
 pub use std::fmt::Display;
 pub use std::sync::Arc;
 pub use tokio;
+use tokio::task::JoinError;
 pub use tokio::*;
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -87,7 +87,7 @@ pub enum Error {
     NotFound,
     InternalServer,
     Multipart(String),
-    Join(String)
+    Join(String),
 }
 
 impl std::fmt::Display for Error {
@@ -226,15 +226,39 @@ macro_rules! embed_static_files {
     };
 }
 
+pub fn dotenv(s: &str) -> Option<String> {
+    use std::collections::HashMap;
+    use std::env;
+    use std::sync::OnceLock;
+
+    let contents: OnceLock<HashMap<String, String>> = OnceLock::new();
+    let map = contents.get_or_init(|| {
+        let path = env::current_dir().unwrap().join(".env");
+        let contents = std::fs::read_to_string(path);
+        match contents {
+            Ok(contents) => contents
+                .lines()
+                .map(|line| line.split("=").map(|s| s.trim().trim_matches('"')))
+                .filter_map(|mut s| match (s.next(), s.next()) {
+                    (Some(key), Some(value)) => Some((key.to_string(), value.to_string())),
+                    _ => None,
+                })
+                .collect::<std::collections::HashMap<String, String>>(),
+            Err(_) => HashMap::default(),
+        }
+    });
+
+    map.get(s).cloned()
+}
+
 #[cfg(test)]
 mod tests {
     use super::dotenv;
 
-    dotenv!(ENV);
-
     #[test]
     fn env_works() {
-        assert_eq!(ENV.hello, "WORLD");
-        assert_eq!(ENV.abc, "XYZ");
+        assert_eq!(dotenv("HELLO"), Some("WORLD".into()));
+        assert_eq!(dotenv("GOODBYE"), None);
+        assert_eq!(dotenv("ABC"), Some("XYZ".into()));
     }
 }

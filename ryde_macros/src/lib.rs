@@ -1,12 +1,10 @@
 mod db;
-mod env;
 mod html;
 mod request_parts;
 mod routes;
 mod static_files;
 
 use db::{db_macro, SqlExpr};
-use env::dotenv_macro;
 use html::{component_macro, html_macro};
 use proc_macro::TokenStream;
 use quote::ToTokens;
@@ -72,15 +70,6 @@ pub fn html(input: TokenStream) -> TokenStream {
 pub fn component(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as Ident);
     match component_macro(input) {
-        Ok(s) => s.to_token_stream().into(),
-        Err(e) => e.to_compile_error().into(),
-    }
-}
-
-#[proc_macro]
-pub fn dotenv(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as Ident);
-    match dotenv_macro(input) {
         Ok(s) => s.to_token_stream().into(),
         Err(e) => e.to_compile_error().into(),
     }

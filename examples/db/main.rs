@@ -12,11 +12,10 @@ fn router(cx: Cx) -> Router {
         .with_state(cx)
 }
 
-dotenv!(ENV);
-
 #[main]
 async fn main() -> Result<()> {
-    let db = db(ENV.database_url).await?;
+    let db_url = dotenv("DATABASE_URL").expect("DATABASE_URL not found");
+    let db = db(db_url).await?;
     let _ = db.create_todos().await?;
     let cx = Cx { db };
     serve("::1:9001", router(cx)).await;
@@ -50,14 +49,18 @@ async fn todos_edit(cx: Cx, db: Db, Path(id): Path<i64>) -> Result<Html> {
     }))
 }
 
-async fn todos_update(db: Db, Path(id): Path<i64>, Form(form): Form<TodoParams>) -> Result<Response> {
+async fn todos_update(
+    db: Db,
+    Path(id): Path<i64>,
+    Form(form): Form<TodoParams>,
+) -> Result<Response> {
     let _todo = db.update_todo(form.content, id).await?;
 
     Ok(redirect_to!(get_slash))
 }
 
 async fn todos_delete(db: Db, Path(id): Path<i64>) -> Result<Response> {
-    let _ = db.delete_todo(id).await?;
+    let _x = db.delete_todo(id).await?;
 
     Ok(redirect_to!(get_slash))
 }
@@ -120,7 +123,7 @@ fn TodoListRow(todo: &Todo) -> Component {
 
 fn View(elements: Elements) -> Component {
     html! {
-        <!DOCTYPE html> 
+        <!DOCTYPE html>
         <html>
             <head>
                 <title>ryde db example</title>
@@ -132,7 +135,7 @@ fn View(elements: Elements) -> Component {
 
 #[derive(Clone, RequestParts)]
 struct Cx {
-    db: Db
+    db: Db,
 }
 
 impl Cx {

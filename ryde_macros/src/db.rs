@@ -860,7 +860,7 @@ fn delete_stmt(
                 sql,
                 in_cols,
                 out_cols,
-                ret: QueryReturn::Row,
+                ret: QueryReturn::OptionRow,
                 cast,
             })
         }

@@ -993,6 +993,13 @@ fn columns_from_expr(table_columns: &HashSet<Column>, expr: &sqlparser::ast::Exp
                 "?" => columns_from_expr(&table_columns, left),
                 _ => unimplemented!("? placeholders only please"),
             },
+            (sqlparser::ast::Expr::BinaryOp { .. }, sqlparser::ast::Expr::BinaryOp { .. }) => vec![
+                columns_from_expr(&table_columns, left),
+                columns_from_expr(&table_columns, right),
+            ]
+            .into_iter()
+            .flatten()
+            .collect(),
             (sqlparser::ast::Expr::BinaryOp { .. }, _) => columns_from_expr(&table_columns, left),
             (_, sqlparser::ast::Expr::BinaryOp { .. }) => columns_from_expr(&table_columns, right),
             _ => vec![],

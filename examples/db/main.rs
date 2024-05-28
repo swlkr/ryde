@@ -123,7 +123,7 @@ fn TodoListRow(todo: &Todo) -> Component {
 
 fn View(elements: Elements) -> Component {
     html! {
-        <!DOCTYPE html>
+        <!DOCTYPE html> 
         <html>
             <head>
                 <title>ryde db example</title>

@@ -498,7 +498,7 @@ fn query_stmt(
             }
         });
     let in_cols = match selection {
-        Some(expr) => columns_from_expr(&db_cols, expr),
+        Some(expr) => columns_from_expr(&db_cols, expr, None),
         None => vec![],
     };
     let out_cols = projection
@@ -580,7 +580,7 @@ fn update_stmt(
         .flat_map(|c| columns_from_idents(&table_columns, c))
         .collect::<Vec<_>>();
     in_cols.extend(match selection {
-        Some(expr) => columns_from_expr(&table_columns, expr),
+        Some(expr) => columns_from_expr(&table_columns, expr, None),
         None => vec![],
     });
 
@@ -824,7 +824,7 @@ fn delete_stmt(
         .map(|c| c.clone())
         .collect::<HashSet<_>>();
     let in_cols = match selection {
-        Some(expr) => columns_from_expr(&table_columns, expr),
+        Some(expr) => columns_from_expr(&table_columns, expr, None),
         None => vec![],
     };
     let out_cols = match returning {
@@ -920,10 +920,16 @@ fn columns_from_select_item(
     cast: &Cast,
 ) -> HashSet<Column> {
     match select_item {
-        sqlparser::ast::SelectItem::UnnamedExpr(expr) => columns_from_expr(&table_columns, expr)
-            .into_iter()
-            .collect::<HashSet<_>>(),
-        sqlparser::ast::SelectItem::ExprWithAlias { .. } => todo!(),
+        sqlparser::ast::SelectItem::UnnamedExpr(expr) => {
+            columns_from_expr(&table_columns, expr, None)
+                .into_iter()
+                .collect::<HashSet<_>>()
+        }
+        sqlparser::ast::SelectItem::ExprWithAlias { expr, alias } => {
+            columns_from_expr(&table_columns, expr, Some(alias))
+                .into_iter()
+                .collect::<HashSet<_>>()
+        }
         sqlparser::ast::SelectItem::QualifiedWildcard(obj_name, _) => table_columns
             .iter()
             .filter(|c| c.table_name == obj_name.to_string())
@@ -945,7 +951,7 @@ fn in_columns_from_query(
         SetExpr::Select(select) => {
             let Select { selection, .. } = &**select;
             match selection {
-                Some(expr) => columns_from_expr(table_columns, expr),
+                Some(expr) => columns_from_expr(table_columns, expr, None),
                 None => todo!(),
             }
         }
@@ -953,7 +959,11 @@ fn in_columns_from_query(
     }
 }
 
-fn columns_from_expr(table_columns: &HashSet<Column>, expr: &sqlparser::ast::Expr) -> Vec<Column> {
+fn columns_from_expr(
+    table_columns: &HashSet<Column>,
+    expr: &sqlparser::ast::Expr,
+    alias: Option<&sqlparser::ast::Ident>,
+) -> Vec<Column> {
     match expr {
         sqlparser::ast::Expr::Identifier(ident) => {
             match table_columns.iter().find(|c| c.name == ident.to_string()) {
@@ -990,18 +1000,22 @@ fn columns_from_expr(table_columns: &HashSet<Column>, expr: &sqlparser::ast::Exp
                 sqlparser::ast::Expr::CompoundIdentifier(_),
                 sqlparser::ast::Expr::Value(sqlparser::ast::Value::Placeholder(token)),
             ) => match token.as_str() {
-                "?" => columns_from_expr(&table_columns, left),
+                "?" => columns_from_expr(&table_columns, left, None),
                 _ => unimplemented!("? placeholders only please"),
             },
             (sqlparser::ast::Expr::BinaryOp { .. }, sqlparser::ast::Expr::BinaryOp { .. }) => vec![
-                columns_from_expr(&table_columns, left),
-                columns_from_expr(&table_columns, right),
+                columns_from_expr(&table_columns, left, None),
+                columns_from_expr(&table_columns, right, None),
             ]
             .into_iter()
             .flatten()
             .collect(),
-            (sqlparser::ast::Expr::BinaryOp { .. }, _) => columns_from_expr(&table_columns, left),
-            (_, sqlparser::ast::Expr::BinaryOp { .. }) => columns_from_expr(&table_columns, right),
+            (sqlparser::ast::Expr::BinaryOp { .. }, _) => {
+                columns_from_expr(&table_columns, left, None)
+            }
+            (_, sqlparser::ast::Expr::BinaryOp { .. }) => {
+                columns_from_expr(&table_columns, right, None)
+            }
             _ => vec![],
         },
         sqlparser::ast::Expr::Value(_) => vec![],
@@ -1013,7 +1027,7 @@ fn columns_from_expr(table_columns: &HashSet<Column>, expr: &sqlparser::ast::Exp
                         .map(|fa| match fa {
                             sqlparser::ast::FunctionArg::Unnamed(fa_expr) => match fa_expr {
                                 sqlparser::ast::FunctionArgExpr::Expr(expr) => {
-                                    columns_from_expr(&table_columns, expr)
+                                    columns_from_expr(&table_columns, expr, None)
                                         .iter()
                                         .map(|c| c.full_name.clone())
                                         .collect::<Vec<_>>()
@@ -1022,12 +1036,16 @@ fn columns_from_expr(table_columns: &HashSet<Column>, expr: &sqlparser::ast::Exp
                                 sqlparser::ast::FunctionArgExpr::QualifiedWildcard(table_name) => {
                                     format!("{}({}.*)", name, table_name)
                                 }
-                                sqlparser::ast::FunctionArgExpr::Wildcard => format!("{}(*)", name),
+                                sqlparser::ast::FunctionArgExpr::Wildcard => name.to_string(),
                             },
-                            _ => todo!(),
+                            _ => todo!("count"),
                         })
                         .collect::<Vec<_>>()
                         .join("");
+                    let name = match alias {
+                        Some(name) => name.to_string(),
+                        None => name,
+                    };
                     vec![Column {
                         name: name.clone(),
                         full_name: name,
@@ -1038,6 +1056,19 @@ fn columns_from_expr(table_columns: &HashSet<Column>, expr: &sqlparser::ast::Exp
                 }
                 "strftime" => vec![],
                 "unixepoch" => vec![],
+                "substr" => {
+                    let name = match alias {
+                        Some(name) => name.to_string(),
+                        None => "substr".into(),
+                    };
+                    vec![Column {
+                        name: name.clone(),
+                        full_name: name,
+                        table_name: "".into(),
+                        data_type: DataType::Text,
+                        column_type: ColumnType::Column,
+                    }]
+                }
                 _ => todo!("what"),
             }
         }

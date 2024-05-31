@@ -411,8 +411,8 @@ fn to_stmt(db_columns: &HashSet<Column>, sql_expr: SqlExpr) -> Option<Stmt> {
                 returning,
                 ..
             } => delete_stmt(db_columns, ident, sql, from, selection, returning, cast),
-            Statement::Query(q) => {
-                let Query { body, limit, .. } = &**q;
+            Statement::Query(d) => {
+                let Query { body, limit, .. } = &**d;
                 query_stmt(db_columns, ident, sql, body, limit.as_ref(), cast)
             }
             _ => Some(Stmt::ExecuteBatch { ident, sql }),

@@ -5,15 +5,16 @@ mod html;
 mod router;
 
 pub use axum;
+pub use axum::middleware;
 pub use axum::{
     extract::*,
     http::{self, header::*, Uri},
+    middleware::Next,
     response::*,
     routing::{any, delete, get, head, patch, post, put, trace},
-    middleware::Next,
     *,
 };
-pub use axum_extra::{extract::*, headers};
+pub use axum_extra::{self, extract::*, headers};
 pub use cookie::Cookie;
 pub use db::{db, rusqlite, tokio_rusqlite, Connection};
 pub use html::{component, escape, html, Component, Elements, Render};
@@ -228,7 +229,7 @@ macro_rules! embed_static_files {
     };
 }
 
-pub fn dotenv(s: &str) -> Option<String> {
+pub fn dotenv(s: &str) -> Result<String> {
     use std::collections::HashMap;
     use std::env;
     use std::sync::OnceLock;
@@ -250,7 +251,9 @@ pub fn dotenv(s: &str) -> Option<String> {
         }
     });
 
-    map.get(s).cloned()
+    map.get(s)
+        .cloned()
+        .ok_or(Error::Io("dotenv get failed".into()))
 }
 
 #[cfg(test)]
@@ -259,8 +262,8 @@ mod tests {
 
     #[test]
     fn env_works() {
-        assert_eq!(dotenv("HELLO"), Some("WORLD".into()));
-        assert_eq!(dotenv("GOODBYE"), None);
-        assert_eq!(dotenv("ABC"), Some("XYZ".into()));
+        assert_eq!(dotenv("HELLO"), Ok("WORLD".into()));
+        assert!(dotenv("GOODBYE").is_err(),);
+        assert_eq!(dotenv("ABC"), Ok("XYZ".into()));
     }
 }

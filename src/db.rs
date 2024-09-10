@@ -15,21 +15,18 @@ mod tests {
                 id integer primary key not null,
                 title text not null,
                 test integer
-            )
-        "# as Post;
+            )"# as Post;
 
         let create_likes = r#"
             create table if not exists likes (
                 id integer primary key not null,
                 post_id integer not null references posts(id)
-            )
-        "# as Like;
+            )"# as Like;
 
         let create_items = r#"
             create table if not exists items (
                 value integer not null
-            )
-        "# as Item;
+            )"# as Item;
 
         let insert_post = r#"
             insert into posts (title, test)
@@ -114,7 +111,8 @@ mod tests {
             order by items.value
         "# as Vec<Item>;
 
-        let create_post = r#"
+        let create_post =
+            r#"
             insert into posts (id, title)
             values (?, ?)
             on conflict (id)

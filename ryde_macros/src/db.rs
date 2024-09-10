@@ -6,10 +6,9 @@ use sqlparser::ast::{
 };
 use sqlparser::{ast::Statement, dialect::SQLiteDialect, parser::Parser};
 use std::collections::HashSet;
-use syn::LitStr;
-use syn::{punctuated::Punctuated, Result, Token};
+use syn::{ExprCast, LitStr, LocalInit, PatIdent, Result};
 
-pub fn db_macro(exprs: Punctuated<SqlExpr, Token![,]>) -> Result<TokenStream> {
+pub fn db_macro(exprs: Vec<SqlExpr>) -> Result<TokenStream> {
     let input = to_input(exprs);
     let output = to_output(input);
     let source = to_tokens(output);
@@ -17,7 +16,7 @@ pub fn db_macro(exprs: Punctuated<SqlExpr, Token![,]>) -> Result<TokenStream> {
     Ok(source)
 }
 
-fn to_input(exprs: Punctuated<SqlExpr, Token![,]>) -> Input {
+fn to_input(exprs: Vec<SqlExpr>) -> Input {
     let defs = exprs
         .into_iter()
         .filter_map(to_statement_expr)
@@ -1252,66 +1251,95 @@ enum Stmt {
     },
 }
 
-impl syn::parse::Parse for SqlExpr {
-    fn parse(input: syn::parse::ParseStream) -> Result<Self> {
-        let ident = input.parse::<Ident>()?;
-        let _equal = input.parse::<Token![=]>()?;
-        let (sql, cast) = if input.peek2(syn::token::As) {
-            let syn::ExprCast { expr, ty, .. } = input.parse::<syn::ExprCast>()?;
-            let sql = match &*expr {
-                syn::Expr::Lit(syn::ExprLit { lit, .. }) => match lit {
-                    syn::Lit::Str(lit_str) => lit_str.value(),
-                    _ => panic!("Expected string literal for sql"),
-                },
-                _ => panic!("Expected string literal for sql"),
-            };
-            let cast = match &*ty {
-                syn::Type::Path(syn::TypePath { path, .. }) => {
-                    let seg = path
-                        .segments
-                        .first()
-                        .expect("Only Vec<T> or T are supported");
-                    match seg.arguments {
-                        syn::PathArguments::None => Cast::T(
-                            path.get_ident()
-                                .cloned()
-                                .expect("Only Vec<T> or T are supported"),
-                        ),
-                        syn::PathArguments::AngleBracketed(ref args) => match args.args.first() {
-                            Some(syn::GenericArgument::Type(ty)) => match ty {
-                                syn::Type::Path(syn::TypePath { path, .. }) => Cast::Vec(
-                                    path.get_ident()
-                                        .cloned()
-                                        .expect("Only Vec<T> or T are supported"),
-                                ),
-                                _ => panic!("Only Vec<T> or T are support"),
-                            },
-                            _ => panic!("Only Vec<T> or T are support"),
-                        },
-                        syn::PathArguments::Parenthesized(_) => todo!(),
-                    }
-                }
-                _ => panic!("Only Vec<T> or T are supported"),
-            };
-            (sql, cast)
-        } else {
-            let lit_str = input.parse::<LitStr>()?;
-            (lit_str.value(), Cast::None)
-        };
-
-        Ok(Self {
-            ident,
-            sql,
-            statements: vec![],
-            cast,
-        })
-    }
-}
-
 #[derive(Default, Debug, Clone, PartialEq)]
 enum Cast {
     T(Ident),
     Vec(Ident),
     #[default]
     None,
+}
+
+#[derive(Debug)]
+pub struct SqlExprs(pub Vec<SqlExpr>);
+
+impl syn::parse::Parse for SqlExprs {
+    fn parse(input: syn::parse::ParseStream) -> Result<Self> {
+        let mut sql_exprs: Vec<SqlExpr> = Vec::new();
+        while !input.is_empty() {
+            let stmt: syn::Stmt = input.parse()?;
+            let sql_expr = sql_expr(stmt);
+            sql_exprs.push(sql_expr);
+        }
+        Ok(SqlExprs(sql_exprs))
+    }
+}
+
+fn cast(ty: Box<syn::Type>) -> Cast {
+    match &*ty {
+        syn::Type::Path(syn::TypePath { path, .. }) => {
+            let seg = path
+                .segments
+                .first()
+                .expect("Only Vec<T> or T are supported");
+            match seg.arguments {
+                syn::PathArguments::None => Cast::T(
+                    path.get_ident()
+                        .cloned()
+                        .expect("Only Vec<T> or T are supported"),
+                ),
+                syn::PathArguments::AngleBracketed(ref args) => match args.args.first() {
+                    Some(syn::GenericArgument::Type(ty)) => match ty {
+                        syn::Type::Path(syn::TypePath { path, .. }) => Cast::Vec(
+                            path.get_ident()
+                                .cloned()
+                                .expect("Only Vec<T> or T are supported"),
+                        ),
+                        _ => panic!("Only Vec<T> or T are support"),
+                    },
+                    _ => panic!("Only Vec<T> or T are support"),
+                },
+                syn::PathArguments::Parenthesized(_) => todo!(),
+            }
+        }
+        _ => panic!("Only Vec<T> or T are supported"),
+    }
+}
+
+fn sql_expr_parts(expr: Box<syn::Expr>) -> (String, Cast) {
+    match *expr {
+        syn::Expr::Cast(ExprCast { expr, ty, .. }) => {
+            let (sql, _) = sql_expr_parts(expr);
+            let cast = cast(ty);
+            (sql, cast)
+        }
+        syn::Expr::Lit(syn::ExprLit { lit, .. }) => match lit {
+            syn::Lit::Str(lit_str) => (lit_str.value(), Cast::None),
+            _ => panic!("Expected string literal for sql"),
+        },
+        _ => panic!("Expected string literal for sql"),
+    }
+}
+
+fn sql_expr(stmt: syn::Stmt) -> SqlExpr {
+    match stmt {
+        syn::Stmt::Local(syn::Local { pat, init, .. }) => {
+            let ident = match pat {
+                syn::Pat::Ident(PatIdent { ident, .. }) => ident,
+                _ => todo!(),
+            };
+            let (sql, cast) = match init {
+                Some(LocalInit { expr, .. }) => sql_expr_parts(expr),
+                None => todo!(),
+            };
+            SqlExpr {
+                ident,
+                sql,
+                statements: vec![],
+                cast,
+            }
+        }
+        syn::Stmt::Item(_) => todo!(),
+        syn::Stmt::Expr(_, _) => todo!(),
+        syn::Stmt::Macro(_) => todo!(),
+    }
 }

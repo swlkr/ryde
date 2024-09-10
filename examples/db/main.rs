@@ -14,8 +14,8 @@ fn router(cx: Cx) -> Router {
 
 #[main]
 async fn main() -> Result<()> {
-    let db_url = dotenv("DATABASE_URL").expect("DATABASE_URL not found");
-    let db = db(db_url).await?;
+    // let db_url = dotenv("DATABASE_URL").expect("DATABASE_URL not found");
+    let db = db(":memory:").await?;
     let _ = db.create_todos().await?;
     let cx = Cx { db };
     serve("::1:9001", router(cx)).await;
@@ -145,19 +145,46 @@ impl Cx {
 }
 
 db!(
-    create_todos = "create table if not exists todos (
-        id integer primary key,
-        content text unique not null,
-        created_at integer not null default(unixepoch())
-    )" as Todo,
-    insert_todo = "
+    let create_todos = r#"
+        create table if not exists todos (
+            id integer primary key,
+            content text unique not null,
+            created_at integer not null default(unixepoch())
+        )
+    "# as Todo;
+
+    let insert_todo = r#"
         insert into todos (content)
         values (?)
         on conflict do
         update set content = excluded.content
-        returning *" as Todo,
-    update_todo = "update todos set content = ? where id = ? returning *" as Todo,
-    delete_todo = "delete from todos where id = ?",
-    todo = "select todos.* from todos where id = ? limit 1" as Todo,
-    todos = "select todos.* from todos order by created_at desc limit 30" as Vec<Todo>,
+        returning *
+    "# as Todo;
+
+    let update_todo = r#"
+        update todos
+        set content = ?
+        where id = ?
+        returning *
+    "# as Todo;
+
+    let delete_todo = r#"
+        delete
+        from todos
+        where id = ?
+    "#;
+
+    let todo = r#"
+        select todos.*
+        from todos
+        where id = ?
+        limit 1
+    "# as Todo;
+
+    let todos = r#"
+        select todos.*
+        from todos
+        order by created_at desc
+        limit 30
+    "# as Vec<Todo>;
 );

@@ -4,19 +4,19 @@ mod request_parts;
 mod routes;
 mod static_files;
 
-use db::{db_macro, SqlExpr};
+use db::{db_macro, SqlExprs};
 use html::{component_macro, html_macro};
 use proc_macro::TokenStream;
 use quote::ToTokens;
 use request_parts::derive_request_parts_macro;
 use routes::{router_macro, routes_macro, url_macro, StateRouter, Url};
 use static_files::static_files_macro;
-use syn::{parse_macro_input, punctuated::Punctuated, DeriveInput, Ident, ItemFn, Token};
+use syn::{parse_macro_input, DeriveInput, Ident, ItemFn};
 
 #[proc_macro]
 pub fn db(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input with Punctuated::<SqlExpr, Token![,]>::parse_terminated);
-    match db_macro(input) {
+    let SqlExprs(sql_exprs) = parse_macro_input!(input as SqlExprs);
+    match db_macro(sql_exprs) {
         Ok(s) => s.to_token_stream().into(),
         Err(e) => e.to_compile_error().into(),
     }

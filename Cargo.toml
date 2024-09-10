@@ -1,6 +1,6 @@
 [package]
 name = "ryde"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2021"
 license = "MIT"
 homepage = "https://github.com/swlkr/ryde"
@@ -14,13 +14,14 @@ axum-extra = { version = "0.9", features = ["cookie", "typed-header", "multipart
 itoa = "1.0"
 http-body-util = "0.1"
 rusqlite = { version = "0.32", features = ["bundled"] }
-ryde_macros = { path = "ryde_macros", version = "0.1.0" }
+ryde_macros = { path = "ryde_macros", version = "0.2.0" }
 ryu = "1.0"
 seq-macro = "0.3"
 serde = { version = "1", features = ["derive"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs", "io-util"] }
 tokio-rusqlite = { git = "https://github.com/programatik29/tokio-rusqlite.git", rev = "d101d1cb32f462f76b7c639d351e6fcf56528004" }
 tower = "0.4"
+time = "0.3.36"
 
 [[example]]
 name = "simple"

@@ -9,31 +9,53 @@ mod tests {
     pub use serde::{self, Deserialize, Serialize};
     use tokio::test;
 
-    db!(
-        create_posts = "
+    db! {
+        let create_posts = r#"
             create table if not exists posts (
                 id integer primary key not null,
                 title text not null,
                 test integer
-            )" as Post,
-        create_likes = "
+            )
+        "# as Post;
+
+        let create_likes = r#"
             create table if not exists likes (
                 id integer primary key not null,
                 post_id integer not null references posts(id)
-            )" as Like,
-        create_items = "
+            )
+        "# as Like;
+
+        let create_items = r#"
             create table if not exists items (
                 value integer not null
-            )" as Item,
-        insert_post = "
+            )
+        "# as Item;
+
+        let insert_post = r#"
             insert into posts (title, test)
             values (?, ?)
             returning *
-        " as Post,
-        select_posts = "select posts.* from posts" as Vec<Post>,
-        select_post = "select posts.* from posts where id = ? limit 1" as Post,
-        like_post = "insert into likes (post_id) values (?) returning *" as Like,
-        select_likes = "
+        "# as Post;
+
+        let select_posts = r#"
+            select posts.*
+            from posts
+        "# as Vec<Post>;
+
+        let select_post = r#"
+            select posts.*
+            from posts
+            where id = ?
+            limit 1
+        "# as Post;
+
+        let like_post = r#"
+            insert into likes (post_id)
+            values (?)
+            returning *
+        "# as Like;
+
+        let select_likes = r#"
             select
                 likes.id,
                 likes.post_id,
@@ -43,28 +65,63 @@ mod tests {
             join
                 posts on posts.id = likes.post_id
             where
-                likes.id = ?",
-        update_post = "
+                likes.id = ?
+        "#;
+
+        let update_post = r#"
             update posts
             set title = ?, test = ?
             where id = ?
-            returning *" as Post,
-        delete_like = "delete from likes where id = ? returning *" as Like,
-        delete_post = "delete from posts where id = ? returning *" as Post,
-        post_count = "select count(*) from posts",
-        insert_select = "
+            returning *
+        "# as Post;
+
+        let delete_like = r#"
+            delete from likes
+            where id = ?
+            returning *
+        "# as Like;
+
+        let delete_post = r#"
+            delete
+            from posts
+            where id = ?
+            returning *
+        "# as Post;
+
+        let post_count = r#"
+            select count(*)
+            from posts
+        "#;
+
+        let insert_select = r#"
             with all_items as (
               select 1 as value
               union all
               select value + 1 from all_items where value < 10
             )
-            insert into items select value from all_items",
-        select_first_item = "select items.* from items order by items.value limit 1" as Item,
-        select_items = "select items.* from items order by items.value" as Vec<Item>,
-        create_post =
-            "insert into posts (id, title) values (?, ?) on conflict (id) do nothing returning *"
-                as Post
-    );
+            insert into items select value from all_items"#;
+
+        let select_first_item = r#"
+            select items.*
+            from items
+            order by items.value
+            limit 1
+        "# as Item;
+
+        let select_items = r#"
+            select items.*
+            from items
+            order by items.value
+        "# as Vec<Item>;
+
+        let create_post = r#"
+            insert into posts (id, title)
+            values (?, ?)
+            on conflict (id)
+            do nothing
+            returning *
+        "# as Post;
+    }
 
     #[test]
     async fn it_works() -> ryde::Result<()> {

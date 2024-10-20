@@ -10,8 +10,6 @@ cargo add --git https://github.com/swlkr/ryde
 
 # Quickstart
 
-Open up your-project/src/main.rs in your favorite editor
-
 ```rust
 use ryde::*;
 

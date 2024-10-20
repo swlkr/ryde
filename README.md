@@ -5,9 +5,7 @@ ryde is a single person, single file  web framework for rust
 # Install
 
 ```sh
-cargo new your-project
-cd your-project
-cargo add ryde
+cargo add --git https://github.com/swlkr/ryde
 ```
 
 # Quickstart

@@ -44,4 +44,4 @@ Clone the repo and check out the rest of examples!
 
 # Why
 
-The goal of ryde is to destroy all boilerplate. Every keystroke you write should mean something. This goal is achieved through pervasive use of the science of macro-ology to define a de facto web development DSL on top of axum and tokio.
+The goal of ryde is to destroy all boilerplate. Every keystroke you write should mean something. This goal is achieved through pervasive use of the science of macro-ology to define a web development DSL on top of axum and tokio.
